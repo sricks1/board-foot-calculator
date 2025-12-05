@@ -1,0 +1,26 @@
+:root {
+  /* Brand Colors */
+  --slate-blue: #324168;
+  --craftsman-orange: #E06829;
+  --sky-blue: #AFCFE4;
+  --deep-navy: #0A112A;
+  --charcoal: #2C2C2C;
+  --workshop-cream: #F5F1E8;
+
+  font-family: 'Rubik', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--charcoal);
+  background-color: var(--workshop-cream);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
