@@ -646,6 +646,53 @@ button {
   height: auto;
 }
 
+/* Cut Dimensions Table */
+.cut-dimensions-list {
+  margin-top: 1rem;
+  border-top: 1px solid var(--sky-blue);
+  padding-top: 1rem;
+}
+
+.cut-dimensions-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.cut-dimensions-table th,
+.cut-dimensions-table td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--sky-blue);
+}
+
+.cut-dimensions-table th {
+  font-weight: 600;
+  color: var(--slate-blue);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  background: rgba(175, 207, 228, 0.2);
+}
+
+.cut-dimensions-table td {
+  color: var(--charcoal);
+}
+
+.cut-dimensions-table td:nth-child(2),
+.cut-dimensions-table td:nth-child(3) {
+  font-weight: 600;
+  color: var(--deep-navy);
+}
+
+.cut-color-indicator {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+}
+
 .cut-plan-empty {
   text-align: center;
   color: var(--charcoal);

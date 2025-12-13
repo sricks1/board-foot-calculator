@@ -456,6 +456,35 @@ function CutPlanBoard({ assignment, scale }) {
           </g>
         ))}
       </svg>
+
+      {/* Cut dimensions list */}
+      <div className="cut-dimensions-list">
+        <table className="cut-dimensions-table">
+          <thead>
+            <tr>
+              <th>Piece</th>
+              <th>Rip Width</th>
+              <th>Crosscut Length</th>
+            </tr>
+          </thead>
+          <tbody>
+            {assignment.cuts.map((cut, idx) => (
+              <tr key={idx}>
+                <td>
+                  <span
+                    className="cut-color-indicator"
+                    style={{ backgroundColor: colors[idx % colors.length] }}
+                  ></span>
+                  {cut.cutPieceName}
+                  {cut.cutPieceIndex > 0 && ` #${cut.cutPieceIndex + 1}`}
+                </td>
+                <td>{cut.width}"</td>
+                <td>{cut.length}"</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
