@@ -29,6 +29,24 @@ function BoardForm({ onSubmit, initialData, onCancel }) {
 
   const thicknessOptions = ['4/4', '5/4', '6/4', '8/4', '10/4', '12/4', '16/4']
 
+  // Update form fields when initialData changes (for editing different boards)
+  useEffect(() => {
+    if (initialData) {
+      setName(initialData.name || '')
+      setLength(initialData.length || '')
+      setWidth(initialData.width || '')
+      setThickness(initialData.thickness || '4/4')
+      setQuantity(initialData.quantity || 1)
+    } else {
+      setName('')
+      setLength('')
+      setWidth('')
+      setThickness('4/4')
+      setQuantity(1)
+    }
+    setError('')
+  }, [initialData])
+
   const handleSubmit = (e) => {
     e.preventDefault()
     setError('')
@@ -204,6 +222,24 @@ function CutPieceForm({ onSubmit, initialData, onCancel, availableThicknesses })
   const thicknessOptions = availableThicknesses.length > 0
     ? availableThicknesses
     : ['4/4', '5/4', '6/4', '8/4', '10/4', '12/4', '16/4']
+
+  // Update form fields when initialData changes (for editing different pieces)
+  useEffect(() => {
+    if (initialData) {
+      setName(initialData.name || '')
+      setLength(initialData.length || '')
+      setWidth(initialData.width || '')
+      setThickness(initialData.thickness || availableThicknesses[0] || '4/4')
+      setQuantity(initialData.quantity || 1)
+    } else {
+      setName('')
+      setLength('')
+      setWidth('')
+      setThickness(availableThicknesses[0] || '4/4')
+      setQuantity(1)
+    }
+    setError('')
+  }, [initialData, availableThicknesses])
 
   const handleSubmit = (e) => {
     e.preventDefault()
