@@ -441,3 +441,89 @@ export function getStockThicknesses(boards) {
   return Array.from(thicknesses)
 }
 
+/**
+ * Get unique thicknesses from cut pieces
+ */
+export function getCutPieceThicknesses(pieces) {
+  const thicknesses = new Set(pieces.map(p => p.thickness))
+  return Array.from(thicknesses)
+}
+
+/**
+ * Calculate how many stock boards are needed to fit all cut pieces
+ * Uses the same optimization algorithm to determine actual board count
+ *
+ * @param {Array} cutPieces - Array of cut pieces needed
+ * @param {Object} stockTemplate - Template for stock boards { length, width, thickness }
+ * @param {number} kerf - Saw blade kerf (default 1/8")
+ * @returns {Object} - { boardsNeeded, boards, cutPlan }
+ */
+export function calculateStockNeeded(cutPieces, stockTemplate, kerf = DEFAULT_KERF) {
+  if (!cutPieces || cutPieces.length === 0) {
+    return { boardsNeeded: 0, boards: [], cutPlan: null }
+  }
+
+  // Start with an estimate based on board feet + 20% waste factor
+  const totalCutBF = calculateCutPiecesBF(cutPieces)
+  const templateThickness = parseThickness(stockTemplate.thickness) || 1
+  const templateBF = (stockTemplate.length * stockTemplate.width * templateThickness) / 144
+  const estimatedBoards = Math.max(1, Math.ceil((totalCutBF * 1.2) / templateBF))
+
+  // Binary search to find minimum boards needed
+  let low = 1
+  let high = Math.max(estimatedBoards * 2, 10)
+  let result = null
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2)
+
+    // Create test boards
+    const testBoards = []
+    for (let i = 0; i < mid; i++) {
+      testBoards.push({
+        id: Date.now() + i,
+        name: `${stockTemplate.name || 'Board'} ${i + 1}`,
+        length: stockTemplate.length,
+        width: stockTemplate.width,
+        thickness: stockTemplate.thickness,
+        thicknessInches: templateThickness,
+        quantity: 1,
+        boardFeet: templateBF
+      })
+    }
+
+    // Try to fit all pieces
+    const cutPlan = optimizeCuts(testBoards, cutPieces, kerf)
+
+    if (cutPlan.unplacedPieces.length === 0) {
+      // All pieces fit, try fewer boards
+      result = { boardsNeeded: mid, boards: testBoards, cutPlan }
+      high = mid - 1
+    } else {
+      // Not all pieces fit, need more boards
+      low = mid + 1
+    }
+  }
+
+  // If no solution found (pieces too big), return with warnings
+  if (!result) {
+    const testBoards = []
+    for (let i = 0; i < high + 1; i++) {
+      testBoards.push({
+        id: Date.now() + i,
+        name: `${stockTemplate.name || 'Board'} ${i + 1}`,
+        length: stockTemplate.length,
+        width: stockTemplate.width,
+        thickness: stockTemplate.thickness,
+        thicknessInches: templateThickness,
+        quantity: 1,
+        boardFeet: templateBF
+      })
+    }
+    const cutPlan = optimizeCuts(testBoards, cutPieces, kerf)
+    result = { boardsNeeded: high + 1, boards: testBoards, cutPlan }
+  }
+
+  return result
+}
+

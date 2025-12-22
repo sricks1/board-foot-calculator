@@ -1,7 +1,17 @@
 import { useState, useEffect } from 'react'
 import './App.css'
-import { optimizeCuts, calculateCutPiecesBF, getStockThicknesses } from './cutOptimizer'
+import { optimizeCuts, calculateCutPiecesBF, getStockThicknesses, getCutPieceThicknesses, calculateStockNeeded } from './cutOptimizer'
 import { exportProjectToPDF } from './pdfExport'
+
+// Common stock board templates
+const STOCK_TEMPLATES = [
+  { name: '8ft × 6" (common)', length: 96, width: 6, thickness: '4/4' },
+  { name: '8ft × 5" (narrow)', length: 96, width: 5, thickness: '4/4' },
+  { name: '8ft × 7" (wide)', length: 96, width: 7, thickness: '4/4' },
+  { name: '8ft × 8" (extra wide)', length: 96, width: 8, thickness: '4/4' },
+  { name: '10ft × 6"', length: 120, width: 6, thickness: '4/4' },
+  { name: '6ft × 6"', length: 72, width: 6, thickness: '4/4' },
+]
 
 // Parse lumber notation like "4/4", "6/4", "8/4" and return thickness in inches
 function parseThickness(notation) {
@@ -388,6 +398,185 @@ function CutPieceItem({ piece, onEdit, onDelete }) {
         <button onClick={() => onEdit(piece)} className="btn-edit">Edit</button>
         <button onClick={() => onDelete(piece.id)} className="btn-delete">Delete</button>
       </div>
+    </div>
+  )
+}
+
+// Stock Calculator Component - calculates how many boards needed
+function StockCalculator({ cutPieces, onApplyStock }) {
+  const [selectedTemplate, setSelectedTemplate] = useState(0)
+  const [customLength, setCustomLength] = useState(96)
+  const [customWidth, setCustomWidth] = useState(6)
+  const [customThickness, setCustomThickness] = useState('4/4')
+  const [useCustom, setUseCustom] = useState(false)
+  const [result, setResult] = useState(null)
+  const [calculating, setCalculating] = useState(false)
+
+  const thicknessOptions = ['4/4', '5/4', '6/4', '8/4', '10/4', '12/4', '16/4']
+
+  // Get unique thicknesses from cut pieces
+  const cutPieceThicknesses = getCutPieceThicknesses(cutPieces)
+
+  const handleCalculate = () => {
+    setCalculating(true)
+
+    const template = useCustom
+      ? { name: 'Custom Board', length: customLength, width: customWidth, thickness: customThickness }
+      : STOCK_TEMPLATES[selectedTemplate]
+
+    // Check if cut pieces have matching thickness
+    const hasMatchingThickness = cutPieceThicknesses.every(t => t === template.thickness)
+    if (!hasMatchingThickness && cutPieceThicknesses.length > 0) {
+      // Update template thickness to match cut pieces if only one thickness
+      if (cutPieceThicknesses.length === 1) {
+        template.thickness = cutPieceThicknesses[0]
+      }
+    }
+
+    setTimeout(() => {
+      const calcResult = calculateStockNeeded(cutPieces, template)
+      setResult(calcResult)
+      setCalculating(false)
+    }, 100)
+  }
+
+  const handleApply = () => {
+    if (result && result.boards.length > 0) {
+      onApplyStock(result.boards, result.cutPlan)
+    }
+  }
+
+  const template = useCustom
+    ? { length: customLength, width: customWidth, thickness: customThickness }
+    : STOCK_TEMPLATES[selectedTemplate]
+
+  const templateBF = (template.length * template.width * (parseThickness(template.thickness) || 1)) / 144
+
+  return (
+    <div className="stock-calculator">
+      <h3>Calculate Stock Needed</h3>
+      <p className="stock-calculator-intro">
+        Don't know how much lumber you need? Select a standard board size and we'll calculate how many you need.
+      </p>
+
+      <div className="stock-template-selector">
+        <div className="template-toggle">
+          <button
+            className={`toggle-btn ${!useCustom ? 'active' : ''}`}
+            onClick={() => setUseCustom(false)}
+          >
+            Standard Sizes
+          </button>
+          <button
+            className={`toggle-btn ${useCustom ? 'active' : ''}`}
+            onClick={() => setUseCustom(true)}
+          >
+            Custom Size
+          </button>
+        </div>
+
+        {!useCustom ? (
+          <div className="template-options">
+            {STOCK_TEMPLATES.map((tmpl, idx) => (
+              <label key={idx} className={`template-option ${selectedTemplate === idx ? 'selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="template"
+                  checked={selectedTemplate === idx}
+                  onChange={() => setSelectedTemplate(idx)}
+                />
+                <span className="template-name">{tmpl.name}</span>
+                <span className="template-bf">{((tmpl.length * tmpl.width * (parseThickness(tmpl.thickness) || 1)) / 144).toFixed(2)} BF</span>
+              </label>
+            ))}
+          </div>
+        ) : (
+          <div className="custom-template-form">
+            <div className="form-row">
+              <div className="form-group">
+                <label>Length (inches)</label>
+                <input
+                  type="number"
+                  value={customLength}
+                  onChange={(e) => setCustomLength(parseFloat(e.target.value) || 0)}
+                  step="1"
+                />
+              </div>
+              <div className="form-group">
+                <label>Width (inches)</label>
+                <input
+                  type="number"
+                  value={customWidth}
+                  onChange={(e) => setCustomWidth(parseFloat(e.target.value) || 0)}
+                  step="0.5"
+                />
+              </div>
+              <div className="form-group">
+                <label>Thickness</label>
+                <select
+                  value={customThickness}
+                  onChange={(e) => setCustomThickness(e.target.value)}
+                >
+                  {thicknessOptions.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {cutPieceThicknesses.length > 0 && cutPieceThicknesses[0] !== template.thickness && (
+          <div className="warning">
+            Your cut pieces use {cutPieceThicknesses.join(', ')} thickness. The calculator will adjust to match.
+          </div>
+        )}
+
+        <button
+          onClick={handleCalculate}
+          className="btn-primary"
+          disabled={calculating}
+        >
+          {calculating ? 'Calculating...' : 'Calculate Stock Needed'}
+        </button>
+      </div>
+
+      {result && (
+        <div className="stock-result">
+          <div className="stock-result-header">
+            <h4>Result</h4>
+          </div>
+          <div className="stock-result-stats">
+            <div className="result-stat">
+              <span className="result-value">{result.boardsNeeded}</span>
+              <span className="result-label">Boards Needed</span>
+            </div>
+            <div className="result-stat">
+              <span className="result-value">{(result.boardsNeeded * templateBF).toFixed(1)}</span>
+              <span className="result-label">Total Board Feet</span>
+            </div>
+            <div className="result-stat">
+              <span className="result-value">{result.cutPlan?.efficiency.toFixed(0) || 0}%</span>
+              <span className="result-label">Efficiency</span>
+            </div>
+          </div>
+
+          {result.cutPlan?.warnings?.length > 0 && (
+            <div className="stock-result-warnings">
+              {result.cutPlan.warnings.map((w, i) => (
+                <div key={i} className="warning">{w}</div>
+              ))}
+            </div>
+          )}
+
+          <button
+            onClick={handleApply}
+            className="btn-primary btn-large"
+          >
+            Use These Boards & Generate Cut Plan
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -800,6 +989,16 @@ function App() {
     setActiveTab('plan')
   }
 
+  // Apply calculated stock boards to project
+  const handleApplyCalculatedStock = (boards, cutPlan) => {
+    updateProject({
+      ...currentProject,
+      boards,
+      cutPlan
+    })
+    setActiveTab('plan')
+  }
+
   const availableThicknesses = currentProject ? getStockThicknesses(currentProject.boards) : []
   const cutPieces = currentProject?.cutPieces || []
 
@@ -980,6 +1179,13 @@ function App() {
                           Generate Cut Plan
                         </button>
                       </div>
+                    )}
+
+                    {cutPieces.length > 0 && currentProject.boards.length === 0 && (
+                      <StockCalculator
+                        cutPieces={cutPieces}
+                        onApplyStock={handleApplyCalculatedStock}
+                      />
                     )}
                   </div>
                 )}

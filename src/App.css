@@ -560,6 +560,159 @@ button {
   border: 2px dashed var(--sky-blue);
 }
 
+/* Stock Calculator */
+.stock-calculator {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.stock-calculator h3 {
+  margin-top: 0;
+  color: var(--slate-blue);
+  font-weight: 500;
+  font-style: italic;
+}
+
+.stock-calculator-intro {
+  color: var(--charcoal);
+  margin-bottom: 1.5rem;
+}
+
+.stock-template-selector {
+  margin-bottom: 1.5rem;
+}
+
+.template-toggle {
+  display: flex;
+  gap: 0;
+  margin-bottom: 1rem;
+  border: 2px solid var(--sky-blue);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.toggle-btn {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  background: white;
+  color: var(--charcoal);
+  border: none;
+  border-radius: 0;
+  font-weight: 500;
+}
+
+.toggle-btn.active {
+  background: var(--slate-blue);
+  color: white;
+}
+
+.toggle-btn:hover:not(.active) {
+  background: rgba(175, 207, 228, 0.3);
+}
+
+.template-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.template-option {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--sky-blue);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.template-option:hover {
+  border-color: var(--slate-blue);
+}
+
+.template-option.selected {
+  border-color: var(--craftsman-orange);
+  background: rgba(224, 104, 41, 0.05);
+}
+
+.template-option input {
+  margin-right: 0.75rem;
+  accent-color: var(--craftsman-orange);
+}
+
+.template-name {
+  flex: 1;
+  font-weight: 500;
+  color: var(--deep-navy);
+}
+
+.template-bf {
+  font-size: 0.875rem;
+  color: var(--charcoal);
+  opacity: 0.7;
+}
+
+.custom-template-form {
+  margin-bottom: 1rem;
+}
+
+.custom-template-form .form-row {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.stock-result {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 2px solid var(--sky-blue);
+}
+
+.stock-result-header h4 {
+  margin: 0 0 1rem;
+  color: var(--slate-blue);
+  font-weight: 500;
+}
+
+.stock-result-stats {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.result-stat {
+  flex: 1;
+  text-align: center;
+  padding: 1rem;
+  background: var(--deep-navy);
+  border-radius: 8px;
+  color: white;
+}
+
+.result-value {
+  display: block;
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.result-label {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  opacity: 0.8;
+  margin-top: 0.25rem;
+}
+
+.stock-result-warnings {
+  margin-bottom: 1rem;
+}
+
+.stock-result .btn-large {
+  width: 100%;
+}
+
 /* Cut Plan Display */
 .cut-plan-display {
   background: white;
