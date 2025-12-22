@@ -86,185 +86,223 @@ function groupByWidth(pieces, kerf) {
 }
 
 /**
- * Try to fit pieces into strips on a board
- * A strip is a full-length rip cut at a specific width
+ * Try to fit pieces into strips on a board using 2D bin packing
+ *
+ * Uses a shelf-based approach where we track rectangular free spaces
+ * and can place narrow pieces alongside wide pieces on the same "row"
  */
 function createStripsForBoard(board, pieces, kerf) {
-  const strips = []
-  let remainingWidth = board.width
-  let currentY = 0 // Y position tracks width usage
-
-  // Sort pieces by width (descending) to place wider pieces first
-  const sortedPieces = [...pieces].sort((a, b) => b.effectiveWidth - a.effectiveWidth)
-  const unplacedPieces = []
   const placedPieceIds = new Set()
+  const placements = []
 
-  // Group remaining pieces by width for efficient strip creation
-  const piecesByWidth = {}
-  sortedPieces.forEach(p => {
-    const widthKey = p.effectiveWidth.toFixed(3)
-    if (!piecesByWidth[widthKey]) {
-      piecesByWidth[widthKey] = []
-    }
-    piecesByWidth[widthKey].push(p)
+  // Sort pieces by width (widest first), then by length (longest first)
+  // This ensures we establish wide strips first, then fill in with narrow pieces
+  const sortedPieces = [...pieces].sort((a, b) => {
+    const widthDiff = b.effectiveWidth - a.effectiveWidth
+    if (Math.abs(widthDiff) > 0.01) return widthDiff
+    return b.effectiveLength - a.effectiveLength
   })
 
-  // Process each unique width
-  const uniqueWidths = Object.keys(piecesByWidth)
-    .map(k => parseFloat(k))
-    .sort((a, b) => b - a) // Largest first
+  // Track free rectangles: { x, y, width, height }
+  // width = along board length (horizontal), height = along board width (vertical)
+  let freeRects = [{ x: 0, y: 0, width: board.length, height: board.width }]
 
-  for (const stripWidth of uniqueWidths) {
-    const widthKey = stripWidth.toFixed(3)
-    const piecesAtWidth = piecesByWidth[widthKey].filter(p => !placedPieceIds.has(p.uniqueId))
+  // Helper: find best fit for a piece (minimize wasted space)
+  // Kerf is accounted for:
+  // 1. At board edges (rough lumber needs jointing/ripping to get clean edge)
+  // 2. In splitRect when dividing remaining space between pieces
+  const findBestFit = (pieceLength, pieceWidth) => {
+    let bestRect = null
+    let bestRotated = false
+    let bestScore = Infinity
 
-    if (piecesAtWidth.length === 0) continue
+    for (const rect of freeRects) {
+      // Calculate usable space in this rect
+      // If rect is at a board edge (x=0 or y=0), we need kerf for jointing
+      const needsLengthEdgeKerf = rect.x < 0.001 // At left edge of board
+      const needsWidthEdgeKerf = rect.y < 0.001  // At bottom edge of board
 
-    // Check if we can fit this strip width
-    const neededWidth = stripWidth + (strips.length > 0 ? kerf : 0)
-    if (neededWidth > remainingWidth) {
-      // Can't fit this width, try to combine with narrower pieces
-      continue
-    }
+      const usableWidth = rect.width - (needsLengthEdgeKerf ? kerf : 0)
+      const usableHeight = rect.height - (needsWidthEdgeKerf ? kerf : 0)
 
-    // Create a strip at this width
-    const strip = {
-      y: currentY + (strips.length > 0 ? kerf : 0),
-      width: stripWidth,
-      length: board.length,
-      pieces: []
-    }
+      // Try normal orientation: piece length along rect width, piece width along rect height
+      if (pieceLength <= usableWidth + 0.001 && pieceWidth <= usableHeight + 0.001) {
+        // Score: prefer smaller rects (less leftover space)
+        const score = (usableWidth - pieceLength) + (usableHeight - pieceWidth)
+        if (score < bestScore) {
+          bestScore = score
+          bestRect = rect
+          bestRotated = false
+        }
+      }
 
-    // Pack pieces into this strip along the length
-    let currentX = 0
-    let remainingLength = board.length
-
-    // Sort pieces at this width by length (descending) for better packing
-    piecesAtWidth.sort((a, b) => b.effectiveLength - a.effectiveLength)
-
-    for (const piece of piecesAtWidth) {
-      if (placedPieceIds.has(piece.uniqueId)) continue
-
-      const neededLength = piece.effectiveLength + (strip.pieces.length > 0 ? kerf : 0)
-
-      if (neededLength <= remainingLength) {
-        // Place the piece
-        strip.pieces.push({
-          ...piece,
-          x: currentX + (strip.pieces.length > 0 ? kerf : 0),
-          y: strip.y,
-          placedLength: piece.effectiveLength,
-          placedWidth: stripWidth
-        })
-
-        currentX += piece.effectiveLength + (strip.pieces.length > 1 ? kerf : 0)
-        remainingLength -= neededLength
-        placedPieceIds.add(piece.uniqueId)
+      // Try rotated: piece width along rect width, piece length along rect height
+      if (pieceWidth <= usableWidth + 0.001 && pieceLength <= usableHeight + 0.001) {
+        const score = (usableWidth - pieceWidth) + (usableHeight - pieceLength)
+        if (score < bestScore) {
+          bestScore = score
+          bestRect = rect
+          bestRotated = true
+        }
       }
     }
 
-    if (strip.pieces.length > 0) {
-      strips.push(strip)
-      currentY = strip.y + stripWidth
-      remainingWidth = board.width - currentY
+    return bestRect ? { rect: bestRect, rotated: bestRotated } : null
+  }
+
+  // Helper: split a rectangle after placing a piece (guillotine split)
+  const splitRect = (rect, placedWidth, placedHeight) => {
+    const newRects = []
+
+    // Right remainder (to the right of the placed piece)
+    const rightWidth = rect.width - placedWidth - kerf
+    if (rightWidth > 1) { // At least 1" useful
+      newRects.push({
+        x: rect.x + placedWidth + kerf,
+        y: rect.y,
+        width: rightWidth,
+        height: rect.height
+      })
+    }
+
+    // Top remainder (above the placed piece, but only as wide as the piece)
+    const topHeight = rect.height - placedHeight - kerf
+    if (topHeight > 1) { // At least 1" useful
+      newRects.push({
+        x: rect.x,
+        y: rect.y + placedHeight + kerf,
+        width: placedWidth, // Only as wide as the placed piece
+        height: topHeight
+      })
+    }
+
+    return newRects
+  }
+
+  // Helper: merge adjacent free rectangles where possible
+  const mergeRects = () => {
+    // Simple merge: combine rects that share an edge and have same dimension
+    let merged = true
+    while (merged) {
+      merged = false
+      for (let i = 0; i < freeRects.length && !merged; i++) {
+        for (let j = i + 1; j < freeRects.length && !merged; j++) {
+          const a = freeRects[i]
+          const b = freeRects[j]
+
+          // Same y and height, adjacent in x
+          if (Math.abs(a.y - b.y) < 0.01 && Math.abs(a.height - b.height) < 0.01) {
+            if (Math.abs(a.x + a.width - b.x) < 0.01) {
+              // a is to the left of b
+              a.width += b.width
+              freeRects.splice(j, 1)
+              merged = true
+            } else if (Math.abs(b.x + b.width - a.x) < 0.01) {
+              // b is to the left of a
+              a.x = b.x
+              a.width += b.width
+              freeRects.splice(j, 1)
+              merged = true
+            }
+          }
+
+          // Same x and width, adjacent in y
+          if (Math.abs(a.x - b.x) < 0.01 && Math.abs(a.width - b.width) < 0.01) {
+            if (Math.abs(a.y + a.height - b.y) < 0.01) {
+              // a is below b
+              a.height += b.height
+              freeRects.splice(j, 1)
+              merged = true
+            } else if (Math.abs(b.y + b.height - a.y) < 0.01) {
+              // b is below a
+              a.y = b.y
+              a.height += b.height
+              freeRects.splice(j, 1)
+              merged = true
+            }
+          }
+        }
+      }
     }
   }
 
-  // Now try to fit remaining pieces by checking if they can be rotated or fit in remaining space
-  // Second pass: try to fit pieces that didn't match exact widths
+  // Place pieces
   for (const piece of sortedPieces) {
     if (placedPieceIds.has(piece.uniqueId)) continue
 
-    // Try to fit in existing strips' remaining length
-    for (const strip of strips) {
-      const stripUsedLength = strip.pieces.reduce((sum, p) => sum + p.placedLength + kerf, 0) - (strip.pieces.length > 0 ? kerf : 0)
-      const stripRemainingLength = board.length - stripUsedLength
+    const pl = piece.effectiveLength
+    const pw = piece.effectiveWidth
 
-      // Check if piece fits (same width or narrower, and fits in remaining length)
-      if (piece.effectiveWidth <= strip.width && piece.effectiveLength + kerf <= stripRemainingLength) {
-        strip.pieces.push({
-          ...piece,
-          x: stripUsedLength + kerf,
-          y: strip.y,
-          placedLength: piece.effectiveLength,
-          placedWidth: piece.effectiveWidth
-        })
-        placedPieceIds.add(piece.uniqueId)
-        break
-      }
+    const fit = findBestFit(pl, pw)
+    if (fit) {
+      const { rect, rotated } = fit
+      const placedLength = rotated ? pw : pl
+      const placedWidth = rotated ? pl : pw
 
-      // Try rotated
-      if (piece.effectiveLength <= strip.width && piece.effectiveWidth + kerf <= stripRemainingLength) {
-        strip.pieces.push({
-          ...piece,
-          x: stripUsedLength + kerf,
-          y: strip.y,
-          placedLength: piece.effectiveWidth,
-          placedWidth: piece.effectiveLength,
-          rotated: true
-        })
-        placedPieceIds.add(piece.uniqueId)
-        break
-      }
-    }
-  }
+      // Calculate offset for edge kerf (jointing rough edges)
+      const needsLengthEdgeKerf = rect.x < 0.001
+      const needsWidthEdgeKerf = rect.y < 0.001
+      const xOffset = needsLengthEdgeKerf ? kerf : 0
+      const yOffset = needsWidthEdgeKerf ? kerf : 0
 
-  // Third pass: create new strips for remaining pieces if space allows
-  for (const piece of sortedPieces) {
-    if (placedPieceIds.has(piece.uniqueId)) continue
+      placements.push({
+        ...piece,
+        x: rect.x + xOffset,
+        y: rect.y + yOffset,
+        placedLength,
+        placedWidth,
+        rotated
+      })
 
-    const neededWidth = piece.effectiveWidth + (strips.length > 0 ? kerf : 0)
-
-    if (neededWidth <= remainingWidth && piece.effectiveLength <= board.length) {
-      // Can create a new strip
-      const strip = {
-        y: currentY + (strips.length > 0 ? kerf : 0),
-        width: piece.effectiveWidth,
-        length: board.length,
-        pieces: [{
-          ...piece,
-          x: 0,
-          y: currentY + (strips.length > 0 ? kerf : 0),
-          placedLength: piece.effectiveLength,
-          placedWidth: piece.effectiveWidth
-        }]
-      }
-
-      strips.push(strip)
-      currentY = strip.y + strip.width
-      remainingWidth = board.width - currentY
       placedPieceIds.add(piece.uniqueId)
-    } else if (piece.effectiveLength + (strips.length > 0 ? kerf : 0) <= remainingWidth && piece.effectiveWidth <= board.length) {
-      // Try rotated
-      const strip = {
-        y: currentY + (strips.length > 0 ? kerf : 0),
-        width: piece.effectiveLength,
+
+      // Remove used rect and add new free rects
+      // Account for edge kerf in what we consumed from the rect
+      freeRects = freeRects.filter(r => r !== rect)
+      const consumedLength = placedLength + xOffset
+      const consumedWidth = placedWidth + yOffset
+      const newRects = splitRect(rect, consumedLength, consumedWidth)
+      freeRects.push(...newRects)
+
+      // Sort rects by position (top-left first) for consistent placement
+      freeRects.sort((a, b) => {
+        if (Math.abs(a.y - b.y) > 0.01) return a.y - b.y
+        return a.x - b.x
+      })
+
+      // Merge adjacent rects
+      mergeRects()
+    }
+  }
+
+  // Convert to output format (group by y position for strip visualization)
+  const outputStrips = []
+  const stripsByY = new Map()
+
+  for (const p of placements) {
+    const key = p.y.toFixed(3)
+    if (!stripsByY.has(key)) {
+      stripsByY.set(key, {
+        y: p.y,
+        width: p.placedWidth,
         length: board.length,
-        pieces: [{
-          ...piece,
-          x: 0,
-          y: currentY + (strips.length > 0 ? kerf : 0),
-          placedLength: piece.effectiveWidth,
-          placedWidth: piece.effectiveLength,
-          rotated: true
-        }]
-      }
-
-      strips.push(strip)
-      currentY = strip.y + strip.width
-      remainingWidth = board.width - currentY
-      placedPieceIds.add(piece.uniqueId)
+        pieces: []
+      })
     }
+    const strip = stripsByY.get(key)
+    strip.width = Math.max(strip.width, p.placedWidth)
+    strip.pieces.push(p)
   }
 
-  // Collect unplaced pieces
-  for (const piece of sortedPieces) {
-    if (!placedPieceIds.has(piece.uniqueId)) {
-      unplacedPieces.push(piece)
-    }
+  for (const [, strip] of stripsByY) {
+    outputStrips.push(strip)
   }
 
-  return { strips, unplacedPieces, placedPieceIds }
+  outputStrips.sort((a, b) => a.y - b.y)
+
+  const unplacedPieces = sortedPieces.filter(p => !placedPieceIds.has(p.uniqueId))
+
+  return { strips: outputStrips, unplacedPieces, placedPieceIds }
 }
 
 /**
@@ -296,33 +334,50 @@ function flattenStrips(strips) {
 }
 
 /**
+ * Create a compound key for thickness + species grouping
+ */
+function makeGroupKey(thickness, species) {
+  return `${thickness}|${species || 'unspecified'}`
+}
+
+/**
+ * Parse a compound key back into thickness and species
+ */
+function parseGroupKey(key) {
+  const [thickness, species] = key.split('|')
+  return { thickness, species: species === 'unspecified' ? null : species }
+}
+
+/**
  * Main optimization function
  */
 export function optimizeCuts(stockBoards, cutPieces, kerf = DEFAULT_KERF) {
   const warnings = []
   const assignments = []
 
-  // Group stock boards by thickness
-  const stockByThickness = {}
+  // Group stock boards by thickness AND species
+  const stockByGroup = {}
   expandStockBoards(stockBoards).forEach(board => {
-    if (!stockByThickness[board.thickness]) {
-      stockByThickness[board.thickness] = []
+    const key = makeGroupKey(board.thickness, board.species)
+    if (!stockByGroup[key]) {
+      stockByGroup[key] = []
     }
-    stockByThickness[board.thickness].push({
+    stockByGroup[key].push({
       ...board,
       used: false
     })
   })
 
-  // Expand cut pieces and group by thickness
+  // Expand cut pieces and group by thickness AND species
   const expandedCuts = expandCutPieces(cutPieces)
-  const cutsByThickness = {}
+  const cutsByGroup = {}
   expandedCuts.forEach(piece => {
-    if (!cutsByThickness[piece.thickness]) {
-      cutsByThickness[piece.thickness] = []
+    const key = makeGroupKey(piece.thickness, piece.species)
+    if (!cutsByGroup[key]) {
+      cutsByGroup[key] = []
     }
     // Add effective dimensions (allowing for rotation consideration)
-    cutsByThickness[piece.thickness].push({
+    cutsByGroup[key].push({
       ...piece,
       effectiveWidth: piece.width,
       effectiveLength: piece.length
@@ -332,21 +387,23 @@ export function optimizeCuts(stockBoards, cutPieces, kerf = DEFAULT_KERF) {
   // Track all unplaced pieces
   let allUnplacedPieces = []
 
-  // Process each thickness
-  for (const thickness in cutsByThickness) {
-    const piecesForThickness = cutsByThickness[thickness]
-    const availableStock = stockByThickness[thickness] || []
+  // Process each thickness+species group
+  for (const groupKey in cutsByGroup) {
+    const { thickness, species } = parseGroupKey(groupKey)
+    const piecesForGroup = cutsByGroup[groupKey]
+    const availableStock = stockByGroup[groupKey] || []
 
     if (availableStock.length === 0) {
-      warnings.push(`No stock boards with thickness ${thickness} available`)
-      allUnplacedPieces = allUnplacedPieces.concat(piecesForThickness)
+      const speciesLabel = species ? ` (${species})` : ''
+      warnings.push(`No stock boards with thickness ${thickness}${speciesLabel} available`)
+      allUnplacedPieces = allUnplacedPieces.concat(piecesForGroup)
       continue
     }
 
     // Sort pieces by area (largest first) for better packing
-    piecesForThickness.sort((a, b) => (b.length * b.width) - (a.length * a.width))
+    piecesForGroup.sort((a, b) => (b.length * b.width) - (a.length * a.width))
 
-    let remainingPieces = [...piecesForThickness]
+    let remainingPieces = [...piecesForGroup]
 
     // Try to fit pieces on each available board
     for (const board of availableStock) {
@@ -367,6 +424,7 @@ export function optimizeCuts(stockBoards, cutPieces, kerf = DEFAULT_KERF) {
           stockBoardIndex: board.instanceIndex,
           uniqueId: board.uniqueId,
           thickness: board.thickness,
+          species: board.species,
           length: board.length,
           width: board.width,
           cuts,
@@ -381,8 +439,9 @@ export function optimizeCuts(stockBoards, cutPieces, kerf = DEFAULT_KERF) {
 
     // Any remaining pieces couldn't be placed
     if (remainingPieces.length > 0) {
+      const speciesLabel = species ? ` (${species})` : ''
       remainingPieces.forEach(p => {
-        warnings.push(`Could not fit "${p.name}" (${p.length}" × ${p.width}") on any ${thickness} stock`)
+        warnings.push(`Could not fit "${p.name}" (${p.length}" × ${p.width}") on any ${thickness}${speciesLabel} stock`)
       })
       allUnplacedPieces = allUnplacedPieces.concat(remainingPieces)
     }
@@ -408,7 +467,7 @@ export function optimizeCuts(stockBoards, cutPieces, kerf = DEFAULT_KERF) {
 
   // Count boards
   const boardsUsed = assignments.length
-  const totalStockBoards = Object.values(stockByThickness).flat().length
+  const totalStockBoards = Object.values(stockByGroup).flat().length
 
   return {
     assignments,
@@ -452,9 +511,10 @@ export function getCutPieceThicknesses(pieces) {
 /**
  * Calculate how many stock boards are needed to fit all cut pieces
  * Supports multiple board templates for optimal material usage
+ * Groups by both thickness AND species
  *
  * @param {Array} cutPieces - Array of cut pieces needed
- * @param {Array} stockTemplates - Array of templates { length, width, thickness, name }
+ * @param {Array} stockTemplates - Array of templates { length, width, thickness, species, name }
  * @param {number} kerf - Saw blade kerf (default 1/8")
  * @returns {Object} - { boardsNeeded, boards, cutPlan, boardsByTemplate }
  */
@@ -470,52 +530,54 @@ export function calculateStockNeeded(cutPieces, stockTemplates, kerf = DEFAULT_K
     return { boardsNeeded: 0, boards: [], cutPlan: null, boardsByTemplate: [] }
   }
 
-  // Group templates by thickness
-  const templatesByThickness = {}
+  // Group templates by thickness + species
+  const templatesByGroup = {}
   templates.forEach(t => {
-    const thickness = t.thickness || '4/4'
-    if (!templatesByThickness[thickness]) {
-      templatesByThickness[thickness] = []
+    const key = makeGroupKey(t.thickness || '4/4', t.species)
+    if (!templatesByGroup[key]) {
+      templatesByGroup[key] = []
     }
-    templatesByThickness[thickness].push(t)
+    templatesByGroup[key].push(t)
   })
 
-  // Group cut pieces by thickness
-  const piecesByThickness = {}
+  // Group cut pieces by thickness + species
+  const piecesByGroup = {}
   cutPieces.forEach(piece => {
-    const thickness = piece.thickness || '4/4'
-    if (!piecesByThickness[thickness]) {
-      piecesByThickness[thickness] = []
+    const key = makeGroupKey(piece.thickness || '4/4', piece.species)
+    if (!piecesByGroup[key]) {
+      piecesByGroup[key] = []
     }
-    piecesByThickness[thickness].push(piece)
+    piecesByGroup[key].push(piece)
   })
 
-  // Calculate stock needed for each thickness group separately
+  // Calculate stock needed for each thickness+species group separately
   const allBoards = []
   const allBoardsByTemplate = []
   let boardIdCounter = Date.now()
 
-  for (const thickness in piecesByThickness) {
-    const piecesForThickness = piecesByThickness[thickness]
-    const templatesForThickness = templatesByThickness[thickness] || []
+  for (const groupKey in piecesByGroup) {
+    const { thickness, species } = parseGroupKey(groupKey)
+    const piecesForGroup = piecesByGroup[groupKey]
+    const templatesForGroup = templatesByGroup[groupKey] || []
 
-    if (templatesForThickness.length === 0) {
-      // No templates for this thickness - will show as warning
+    if (templatesForGroup.length === 0) {
+      // No templates for this group - will show as warning in the cut plan
       continue
     }
 
-    // Calculate for this thickness group
+    // Calculate for this group
     let result
-    if (templatesForThickness.length === 1) {
-      result = calculateStockForSingleTemplate(piecesForThickness, templatesForThickness[0], kerf)
+    if (templatesForGroup.length === 1) {
+      result = calculateStockForSingleTemplate(piecesForGroup, templatesForGroup[0], kerf)
     } else {
-      result = calculateStockForMultipleTemplates(piecesForThickness, templatesForThickness, kerf)
+      result = calculateStockForMultipleTemplates(piecesForGroup, templatesForGroup, kerf)
     }
 
     if (result && result.boards) {
-      // Add unique IDs to boards
+      // Add unique IDs and species to boards
       result.boards.forEach(board => {
         board.id = boardIdCounter++
+        board.species = species // Ensure species is set
         allBoards.push(board)
       })
 
@@ -591,6 +653,7 @@ function tryBoardDistribution(cutPieces, templates, totalBoards, kerf) {
           width: template.width,
           thickness: template.thickness,
           thicknessInches: thicknessInches,
+          species: template.species,
           quantity: 1,
           boardFeet: bf,
           templateIndex: idx
@@ -672,6 +735,7 @@ function calculateStockForSingleTemplate(cutPieces, stockTemplate, kerf) {
         width: stockTemplate.width,
         thickness: stockTemplate.thickness,
         thicknessInches: templateThickness,
+        species: stockTemplate.species,
         quantity: 1,
         boardFeet: templateBF
       })
@@ -697,6 +761,7 @@ function calculateStockForSingleTemplate(cutPieces, stockTemplate, kerf) {
         width: stockTemplate.width,
         thickness: stockTemplate.thickness,
         thicknessInches: templateThickness,
+        species: stockTemplate.species,
         quantity: 1,
         boardFeet: templateBF
       })

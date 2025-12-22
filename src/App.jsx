@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import './App.css'
 import { optimizeCuts, calculateCutPiecesBF, getStockThicknesses, getCutPieceThicknesses, calculateStockNeeded } from './cutOptimizer'
 import { exportProjectToPDF } from './pdfExport'
+import { supabase } from './supabaseClient'
+import Auth from './Auth'
 
 // Common stock board templates (base dimensions, thickness selected separately)
 const STOCK_TEMPLATES = [
@@ -14,6 +16,24 @@ const STOCK_TEMPLATES = [
 ]
 
 const THICKNESS_OPTIONS = ['4/4', '5/4', '6/4', '8/4', '10/4', '12/4', '16/4']
+
+const SPECIES_OPTIONS = [
+  'Walnut',
+  'Cherry',
+  'Maple',
+  'Oak (Red)',
+  'Oak (White)',
+  'Ash',
+  'Poplar',
+  'Pine',
+  'Cedar',
+  'Mahogany',
+  'Birch',
+  'Hickory',
+  'Alder',
+  'Beech',
+  'Other'
+]
 
 // Parse lumber notation like "4/4", "6/4", "8/4" and return thickness in inches
 function parseThickness(notation) {
@@ -36,6 +56,7 @@ function BoardForm({ onSubmit, initialData, onCancel }) {
   const [length, setLength] = useState(initialData?.length || '')
   const [width, setWidth] = useState(initialData?.width || '')
   const [thickness, setThickness] = useState(initialData?.thickness || '4/4')
+  const [species, setSpecies] = useState(initialData?.species || 'Walnut')
   const [quantity, setQuantity] = useState(initialData?.quantity || 1)
   const [error, setError] = useState('')
 
@@ -48,12 +69,14 @@ function BoardForm({ onSubmit, initialData, onCancel }) {
       setLength(initialData.length || '')
       setWidth(initialData.width || '')
       setThickness(initialData.thickness || '4/4')
+      setSpecies(initialData.species || 'Walnut')
       setQuantity(initialData.quantity || 1)
     } else {
       setName('')
       setLength('')
       setWidth('')
       setThickness('4/4')
+      setSpecies('Walnut')
       setQuantity(1)
     }
     setError('')
@@ -98,6 +121,7 @@ function BoardForm({ onSubmit, initialData, onCancel }) {
       width: widthNum,
       thickness,
       thicknessInches: parsedThickness,
+      species,
       quantity: quantityNum,
       boardFeetPerPiece,
       boardFeet: totalBoardFeet
@@ -108,6 +132,7 @@ function BoardForm({ onSubmit, initialData, onCancel }) {
       setLength('')
       setWidth('')
       setThickness('4/4')
+      setSpecies('Walnut')
       setQuantity(1)
     }
   }
@@ -180,6 +205,19 @@ function BoardForm({ onSubmit, initialData, onCancel }) {
             required
           />
         </div>
+
+        <div className="form-group">
+          <label htmlFor="species">Species</label>
+          <select
+            id="species"
+            value={species}
+            onChange={(e) => setSpecies(e.target.value)}
+          >
+            {SPECIES_OPTIONS.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="form-actions">
@@ -197,18 +235,27 @@ function BoardForm({ onSubmit, initialData, onCancel }) {
 }
 
 // Board List Item Component
-function BoardItem({ board, onEdit, onDelete }) {
+function BoardItem({ board, onEdit, onDelete, onDragStart, onDragOver, onDrop, onDragEnd, isDragging, isDragOver }) {
   const qty = board.quantity || 1
   const perPiece = board.boardFeetPerPiece || board.boardFeet
 
   return (
-    <div className="board-item">
+    <div
+      className={`board-item ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}`}
+      draggable
+      onDragStart={(e) => onDragStart(e, board.id)}
+      onDragOver={(e) => onDragOver(e, board.id)}
+      onDrop={(e) => onDrop(e, board.id)}
+      onDragEnd={onDragEnd}
+    >
+      <div className="drag-handle">⋮⋮</div>
       <div className="board-info">
         <h4>{board.name}</h4>
         <p className="board-dimensions">
           {board.length}" × {board.width}" × {board.thickness}
           {qty > 1 && <span className="board-quantity"> × {qty} pcs</span>}
         </p>
+        {board.species && <p className="board-species">{board.species}</p>}
         <p className="board-feet">
           <strong>{board.boardFeet.toFixed(2)}</strong> board feet
           {qty > 1 && <span className="per-piece"> ({perPiece.toFixed(2)} each)</span>}
@@ -223,17 +270,22 @@ function BoardItem({ board, onEdit, onDelete }) {
 }
 
 // Cut Piece Form Component
-function CutPieceForm({ onSubmit, initialData, onCancel, availableThicknesses }) {
+function CutPieceForm({ onSubmit, initialData, onCancel, availableThicknesses, availableSpecies }) {
   const [name, setName] = useState(initialData?.name || '')
   const [length, setLength] = useState(initialData?.length || '')
   const [width, setWidth] = useState(initialData?.width || '')
   const [thickness, setThickness] = useState(initialData?.thickness || availableThicknesses[0] || '4/4')
+  const [species, setSpecies] = useState(initialData?.species || availableSpecies[0] || 'Walnut')
   const [quantity, setQuantity] = useState(initialData?.quantity || 1)
   const [error, setError] = useState('')
 
   const thicknessOptions = availableThicknesses.length > 0
     ? availableThicknesses
     : ['4/4', '5/4', '6/4', '8/4', '10/4', '12/4', '16/4']
+
+  const speciesOptions = availableSpecies.length > 0
+    ? availableSpecies
+    : SPECIES_OPTIONS
 
   // Update form fields when initialData changes (for editing different pieces)
   useEffect(() => {
@@ -242,16 +294,18 @@ function CutPieceForm({ onSubmit, initialData, onCancel, availableThicknesses })
       setLength(initialData.length || '')
       setWidth(initialData.width || '')
       setThickness(initialData.thickness || availableThicknesses[0] || '4/4')
+      setSpecies(initialData.species || availableSpecies[0] || 'Walnut')
       setQuantity(initialData.quantity || 1)
     } else {
       setName('')
       setLength('')
       setWidth('')
       setThickness(availableThicknesses[0] || '4/4')
+      setSpecies(availableSpecies[0] || 'Walnut')
       setQuantity(1)
     }
     setError('')
-  }, [initialData, availableThicknesses])
+  }, [initialData, availableThicknesses, availableSpecies])
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -282,6 +336,7 @@ function CutPieceForm({ onSubmit, initialData, onCancel, availableThicknesses })
       length: lengthNum,
       width: widthNum,
       thickness,
+      species,
       quantity: quantityNum
     })
 
@@ -367,6 +422,19 @@ function CutPieceForm({ onSubmit, initialData, onCancel, availableThicknesses })
             required
           />
         </div>
+
+        <div className="form-group">
+          <label htmlFor="cutSpecies">Species</label>
+          <select
+            id="cutSpecies"
+            value={species}
+            onChange={(e) => setSpecies(e.target.value)}
+          >
+            {speciesOptions.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="form-actions">
@@ -384,17 +452,26 @@ function CutPieceForm({ onSubmit, initialData, onCancel, availableThicknesses })
 }
 
 // Cut Piece Item Component
-function CutPieceItem({ piece, onEdit, onDelete }) {
+function CutPieceItem({ piece, onEdit, onDelete, onDragStart, onDragOver, onDrop, onDragEnd, isDragging, isDragOver }) {
   const qty = piece.quantity || 1
 
   return (
-    <div className="cut-piece-item">
+    <div
+      className={`cut-piece-item ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}`}
+      draggable
+      onDragStart={(e) => onDragStart(e, piece.id)}
+      onDragOver={(e) => onDragOver(e, piece.id)}
+      onDrop={(e) => onDrop(e, piece.id)}
+      onDragEnd={onDragEnd}
+    >
+      <div className="drag-handle">⋮⋮</div>
       <div className="cut-piece-info">
         <h4>{piece.name}</h4>
         <p className="cut-piece-dimensions">
           {piece.length}" × {piece.width}" × {piece.thickness}
           {qty > 1 && <span className="cut-piece-quantity"> × {qty} pcs</span>}
         </p>
+        {piece.species && <p className="cut-piece-species">{piece.species}</p>}
       </div>
       <div className="cut-piece-actions">
         <button onClick={() => onEdit(piece)} className="btn-edit">Edit</button>
@@ -404,78 +481,138 @@ function CutPieceItem({ piece, onEdit, onDelete }) {
   )
 }
 
+// Get unique species from cut pieces
+function getCutPieceSpecies(pieces) {
+  const species = new Set(pieces.map(p => p.species).filter(Boolean))
+  return Array.from(species)
+}
+
 // Stock Calculator Component - calculates how many boards needed
 function StockCalculator({ cutPieces, onApplyStock }) {
-  const [selectedTemplates, setSelectedTemplates] = useState([2]) // Default to 8ft × 6"
-  const [selectedThicknesses, setSelectedThicknesses] = useState(['4/4'])
+  // Current selection state for adding a board type
+  const [currentThickness, setCurrentThickness] = useState('4/4')
+  const [currentSpecies, setCurrentSpecies] = useState('')
+  const [currentSize, setCurrentSize] = useState(null) // null = not selected, or template id
+  const [useCustomSize, setUseCustomSize] = useState(false)
   const [customLength, setCustomLength] = useState(96)
   const [customWidth, setCustomWidth] = useState(6)
-  const [useCustom, setUseCustom] = useState(false)
+
+  // List of board types to consider
+  const [boardTypes, setBoardTypes] = useState([])
+
+  // Track recently added for visual feedback
+  const [justAddedId, setJustAddedId] = useState(null)
+
+  // Calculation results
   const [result, setResult] = useState(null)
   const [calculating, setCalculating] = useState(false)
 
-  // Get unique thicknesses from cut pieces
+  // Get unique thicknesses and species from cut pieces
   const cutPieceThicknesses = getCutPieceThicknesses(cutPieces)
+  const cutPieceSpeciesList = getCutPieceSpecies(cutPieces)
 
-  // Auto-set thickness from cut pieces on initial load
+  // Auto-set initial values from cut pieces
   useEffect(() => {
-    if (cutPieceThicknesses.length > 0) {
-      setSelectedThicknesses(cutPieceThicknesses)
+    if (cutPieceThicknesses.length > 0 && !currentThickness) {
+      setCurrentThickness(cutPieceThicknesses[0])
     }
-  }, [cutPieceThicknesses.length])
+    if (cutPieceSpeciesList.length > 0 && !currentSpecies) {
+      setCurrentSpecies(cutPieceSpeciesList[0])
+    }
+  }, [cutPieceThicknesses, cutPieceSpeciesList])
 
-  const handleTemplateToggle = (templateId) => {
-    setSelectedTemplates(prev => {
-      if (prev.includes(templateId)) {
-        // Don't allow deselecting if it's the only one
-        if (prev.length === 1) return prev
-        return prev.filter(id => id !== templateId)
-      } else {
-        return [...prev, templateId]
+  // Check what thickness/species combinations are needed but not yet added
+  const getMissingCombinations = () => {
+    const needed = new Set()
+    cutPieces.forEach(p => {
+      const key = `${p.thickness}|${p.species || ''}`
+      needed.add(key)
+    })
+
+    const added = new Set()
+    boardTypes.forEach(bt => {
+      const key = `${bt.thickness}|${bt.species || ''}`
+      added.add(key)
+    })
+
+    const missing = []
+    needed.forEach(key => {
+      if (!added.has(key)) {
+        const [thickness, species] = key.split('|')
+        missing.push({ thickness, species: species || null })
       }
     })
-    setResult(null) // Clear results when selection changes
+    return missing
   }
 
-  const handleThicknessToggle = (thickness) => {
-    setSelectedThicknesses(prev => {
-      if (prev.includes(thickness)) {
-        // Don't allow deselecting if it's the only one
-        if (prev.length === 1) return prev
-        return prev.filter(t => t !== thickness)
-      } else {
-        return [...prev, thickness]
+  const missingCombinations = getMissingCombinations()
+
+  const handleAddBoardType = () => {
+    if (!currentThickness) return
+
+    let newBoardType
+    if (useCustomSize) {
+      if (!customLength || !customWidth) return
+      const thicknessInches = parseThickness(currentThickness) || 1
+      const bf = (customLength * customWidth * thicknessInches) / 144
+      newBoardType = {
+        id: Date.now(),
+        name: `${customLength}" × ${customWidth}"`,
+        length: customLength,
+        width: customWidth,
+        thickness: currentThickness,
+        species: currentSpecies || null,
+        boardFeet: bf,
+        isCustom: true
       }
-    })
-    setResult(null) // Clear results when selection changes
+    } else {
+      if (!currentSize) return
+      const template = STOCK_TEMPLATES.find(t => t.id === currentSize)
+      if (!template) return
+      const thicknessInches = parseThickness(currentThickness) || 1
+      const bf = (template.length * template.width * thicknessInches) / 144
+      newBoardType = {
+        id: Date.now(),
+        name: template.name,
+        length: template.length,
+        width: template.width,
+        thickness: currentThickness,
+        species: currentSpecies || null,
+        boardFeet: bf,
+        isCustom: false
+      }
+    }
+
+    setBoardTypes([...boardTypes, newBoardType])
+    setResult(null) // Clear previous results
+
+    // Show "just added" feedback
+    setJustAddedId(newBoardType.id)
+    setTimeout(() => setJustAddedId(null), 2000)
+
+    // Reset size selection for next add
+    setCurrentSize(null)
+    setUseCustomSize(false)
+  }
+
+  const handleRemoveBoardType = (id) => {
+    setBoardTypes(boardTypes.filter(bt => bt.id !== id))
+    setResult(null)
   }
 
   const handleCalculate = () => {
+    if (boardTypes.length === 0) return
+
     setCalculating(true)
 
-    // Build templates for each combination of size and thickness
-    let templates = []
-    if (useCustom) {
-      selectedThicknesses.forEach(thickness => {
-        templates.push({
-          name: `Custom Board (${thickness})`,
-          length: customLength,
-          width: customWidth,
-          thickness: thickness
-        })
-      })
-    } else {
-      selectedTemplates.forEach(id => {
-        const tmpl = STOCK_TEMPLATES.find(t => t.id === id)
-        selectedThicknesses.forEach(thickness => {
-          templates.push({
-            ...tmpl,
-            name: `${tmpl.name} (${thickness})`,
-            thickness: thickness
-          })
-        })
-      })
-    }
+    // Convert board types to templates
+    const templates = boardTypes.map(bt => ({
+      name: `${bt.name} (${bt.thickness}${bt.species ? ` - ${bt.species}` : ''})`,
+      length: bt.length,
+      width: bt.width,
+      thickness: bt.thickness,
+      species: bt.species
+    }))
 
     setTimeout(() => {
       const calcResult = calculateStockNeeded(cutPieces, templates)
@@ -496,130 +633,167 @@ function StockCalculator({ cutPieces, onApplyStock }) {
     return result.boards.reduce((sum, board) => sum + board.boardFeet, 0)
   }
 
-  // Use the first selected thickness for display calculations
-  const thicknessInches = parseThickness(selectedThicknesses[0]) || 1
+  // Calculate BF for current selection preview
+  const currentThicknessInches = parseThickness(currentThickness) || 1
 
   return (
     <div className="stock-calculator">
       <h3>Calculate Stock Needed</h3>
       <p className="stock-calculator-intro">
-        Select board sizes you can purchase. Choose multiple widths for better material utilization.
+        Add board types you can purchase. The calculator will determine how many of each you need.
       </p>
 
-      <div className="stock-template-selector">
-        {/* Thickness Selection - Multiple */}
-        <div className="thickness-selector">
-          <label>Board Thickness (select all that apply)</label>
+      {/* Board Type Builder */}
+      <div className="board-type-builder">
+        <div className="builder-header">
+          {boardTypes.length === 0 ? (
+            <span className="builder-title">Add a Board Type</span>
+          ) : (
+            <span className="builder-title">Add Another Board Type</span>
+          )}
+        </div>
+
+        <div className="builder-step">
+          <label className="builder-label">1. Thickness</label>
           <div className="thickness-options">
             {THICKNESS_OPTIONS.map(opt => (
               <button
                 key={opt}
-                className={`thickness-btn ${selectedThicknesses.includes(opt) ? 'active' : ''}`}
-                onClick={() => handleThicknessToggle(opt)}
+                className={`thickness-btn ${currentThickness === opt ? 'active' : ''}`}
+                onClick={() => setCurrentThickness(opt)}
               >
                 {opt}
               </button>
             ))}
           </div>
-          {cutPieceThicknesses.length > 0 &&
-           !cutPieceThicknesses.every(t => selectedThicknesses.includes(t)) && (
-            <div className="warning" style={{ marginTop: '0.5rem' }}>
-              Your cut pieces use {cutPieceThicknesses.join(', ')} thickness.
-              Make sure to select matching thicknesses.
-            </div>
-          )}
-          {selectedThicknesses.length > 1 && (
-            <p className="multi-select-info" style={{ marginTop: '0.5rem' }}>
-              Using {selectedThicknesses.length} thicknesses: {selectedThicknesses.join(', ')}
-            </p>
-          )}
         </div>
 
-        <div className="template-toggle">
-          <button
-            className={`toggle-btn ${!useCustom ? 'active' : ''}`}
-            onClick={() => setUseCustom(false)}
-          >
-            Standard Sizes
-          </button>
-          <button
-            className={`toggle-btn ${useCustom ? 'active' : ''}`}
-            onClick={() => setUseCustom(true)}
-          >
-            Custom Size
-          </button>
-        </div>
-
-        {!useCustom ? (
-          <>
-            <p className="template-hint">Select one or more board widths (click to toggle):</p>
-            <div className="template-options multi-select">
-              {STOCK_TEMPLATES.map(tmpl => {
-                const isSelected = selectedTemplates.includes(tmpl.id)
-                const bf = (tmpl.length * tmpl.width * thicknessInches) / 144
-                return (
-                  <label
-                    key={tmpl.id}
-                    className={`template-option ${isSelected ? 'selected' : ''}`}
-                    onClick={() => handleTemplateToggle(tmpl.id)}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => {}}
-                    />
-                    <span className="template-name">{tmpl.name}</span>
-                    <span className="template-bf">{bf.toFixed(2)} BF</span>
-                  </label>
-                )
-              })}
-            </div>
-            {selectedTemplates.length > 1 && (
-              <p className="multi-select-info">
-                Using {selectedTemplates.length} board widths for optimal material usage
-              </p>
-            )}
-          </>
-        ) : (
-          <div className="custom-template-form">
-            <div className="form-row">
-              <div className="form-group">
-                <label>Length (inches)</label>
-                <input
-                  type="number"
-                  value={customLength}
-                  onChange={(e) => {
-                    setCustomLength(parseFloat(e.target.value) || 0)
-                    setResult(null)
-                  }}
-                  step="1"
-                />
-              </div>
-              <div className="form-group">
-                <label>Width (inches)</label>
-                <input
-                  type="number"
-                  value={customWidth}
-                  onChange={(e) => {
-                    setCustomWidth(parseFloat(e.target.value) || 0)
-                    setResult(null)
-                  }}
-                  step="0.5"
-                />
-              </div>
+        {cutPieceSpeciesList.length > 0 && (
+          <div className="builder-step">
+            <label className="builder-label">2. Species</label>
+            <div className="species-options">
+              {cutPieceSpeciesList.map(species => (
+                <button
+                  key={species}
+                  className={`species-btn ${currentSpecies === species ? 'active' : ''}`}
+                  onClick={() => setCurrentSpecies(species)}
+                >
+                  {species}
+                </button>
+              ))}
             </div>
           </div>
         )}
 
+        <div className="builder-step">
+          <label className="builder-label">{cutPieceSpeciesList.length > 0 ? '3' : '2'}. Size</label>
+          <div className="size-toggle">
+            <button
+              className={`toggle-btn ${!useCustomSize ? 'active' : ''}`}
+              onClick={() => setUseCustomSize(false)}
+            >
+              Standard
+            </button>
+            <button
+              className={`toggle-btn ${useCustomSize ? 'active' : ''}`}
+              onClick={() => setUseCustomSize(true)}
+            >
+              Custom
+            </button>
+          </div>
+
+          {!useCustomSize ? (
+            <div className="size-options">
+              {STOCK_TEMPLATES.map(tmpl => {
+                const bf = (tmpl.length * tmpl.width * currentThicknessInches) / 144
+                return (
+                  <button
+                    key={tmpl.id}
+                    className={`size-btn ${currentSize === tmpl.id ? 'active' : ''}`}
+                    onClick={() => setCurrentSize(tmpl.id)}
+                  >
+                    <span className="size-name">{tmpl.name}</span>
+                    <span className="size-bf">{bf.toFixed(2)} BF</span>
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="custom-size-inputs">
+              <div className="form-group">
+                <label>Length (in)</label>
+                <input
+                  type="number"
+                  value={customLength}
+                  onChange={(e) => setCustomLength(parseFloat(e.target.value) || 0)}
+                  step="1"
+                />
+              </div>
+              <div className="form-group">
+                <label>Width (in)</label>
+                <input
+                  type="number"
+                  value={customWidth}
+                  onChange={(e) => setCustomWidth(parseFloat(e.target.value) || 0)}
+                  step="0.5"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
         <button
-          onClick={handleCalculate}
-          className="btn-primary"
-          disabled={calculating}
+          onClick={handleAddBoardType}
+          className="btn-add-board-type"
+          disabled={!currentThickness || (!useCustomSize && !currentSize) || (useCustomSize && (!customLength || !customWidth))}
         >
-          {calculating ? 'Calculating...' : 'Calculate Stock Needed'}
+          + Add Board Type
         </button>
       </div>
 
+      {/* Added Board Types List */}
+      {boardTypes.length > 0 && (
+        <div className="board-types-list">
+          <div className="board-types-header">
+            <h4>Board Types Added ({boardTypes.length})</h4>
+          </div>
+          {boardTypes.map(bt => (
+            <div key={bt.id} className={`board-type-item ${justAddedId === bt.id ? 'just-added' : ''}`}>
+              <div className="board-type-info">
+                <span className="board-type-name">{bt.name}</span>
+                <span className="board-type-details">
+                  {bt.thickness}{bt.species ? ` • ${bt.species}` : ''} • {bt.boardFeet.toFixed(2)} BF
+                </span>
+              </div>
+              <button
+                onClick={() => handleRemoveBoardType(bt.id)}
+                className="btn-remove"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+
+          {/* Warning for missing combinations */}
+          {missingCombinations.length > 0 && (
+            <div className="warning" style={{ marginTop: '0.75rem', marginBottom: '0.75rem' }}>
+              Still need: {missingCombinations.map(m =>
+                `${m.thickness}${m.species ? ` ${m.species}` : ''}`
+              ).join(', ')}
+            </div>
+          )}
+
+          <button
+            onClick={handleCalculate}
+            className="btn-primary btn-calculate"
+            disabled={calculating}
+          >
+            {calculating ? 'Calculating...' : 'Calculate Stock Needed'}
+          </button>
+        </div>
+      )}
+
+      {/* Results */}
       {result && (
         <div className="stock-result">
           <div className="stock-result-header">
@@ -774,7 +948,7 @@ function CutPlanBoard({ assignment, scale }) {
 }
 
 // Cut Plan Display Component
-function CutPlanDisplay({ cutPlan, onRegenerate }) {
+function CutPlanDisplay({ cutPlan, onRegenerate, isRegenerating }) {
   if (!cutPlan) return null
 
   const scale = 3 // pixels per inch
@@ -783,8 +957,12 @@ function CutPlanDisplay({ cutPlan, onRegenerate }) {
     <div className="cut-plan-display">
       <div className="cut-plan-header">
         <h3>Cut Plan</h3>
-        <button onClick={onRegenerate} className="btn-secondary">
-          Regenerate Plan
+        <button
+          onClick={onRegenerate}
+          className={`btn-secondary ${isRegenerating ? 'btn-loading' : ''}`}
+          disabled={isRegenerating}
+        >
+          {isRegenerating ? 'Regenerating...' : 'Regenerate Plan'}
         </button>
       </div>
 
@@ -992,15 +1170,123 @@ function ProjectForm({ onSubmit }) {
 
 // Main App Component
 function App() {
-  const [projects, setProjects] = useState(() => {
-    const saved = localStorage.getItem('boardFootProjects')
-    return saved ? JSON.parse(saved) : []
-  })
+  const [session, setSession] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [projects, setProjects] = useState([])
   const [currentProject, setCurrentProject] = useState(null)
   const [editingBoard, setEditingBoard] = useState(null)
   const [editingCutPiece, setEditingCutPiece] = useState(null)
   const [showProjectForm, setShowProjectForm] = useState(false)
   const [activeTab, setActiveTab] = useState('cutlist') // Default based on workflow
+  const [syncStatus, setSyncStatus] = useState('synced') // 'synced', 'syncing', 'error'
+  const [isRegenerating, setIsRegenerating] = useState(false)
+  const [draggingBoardId, setDraggingBoardId] = useState(null)
+  const [dragOverBoardId, setDragOverBoardId] = useState(null)
+  const [draggingCutPieceId, setDraggingCutPieceId] = useState(null)
+  const [dragOverCutPieceId, setDragOverCutPieceId] = useState(null)
+
+  // Check for existing session on mount
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      setLoading(false)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // Load projects from Supabase when user logs in
+  useEffect(() => {
+    if (session) {
+      loadProjects()
+    } else {
+      setProjects([])
+    }
+  }, [session])
+
+  // Load all projects for the current user
+  const loadProjects = async () => {
+    setSyncStatus('syncing')
+    try {
+      // Load projects
+      const { data: projectsData, error: projectsError } = await supabase
+        .from('projects')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (projectsError) throw projectsError
+
+      // Load boards and cut_pieces for all projects
+      const projectIds = projectsData.map(p => p.id)
+
+      // Only query if there are projects
+      let boardsData = []
+      let cutPiecesData = []
+
+      if (projectIds.length > 0) {
+        const { data: boards, error: boardsError } = await supabase
+          .from('boards')
+          .select('*')
+          .in('project_id', projectIds)
+
+        if (boardsError) throw boardsError
+        boardsData = boards || []
+
+        const { data: cutPieces, error: cutPiecesError } = await supabase
+          .from('cut_pieces')
+          .select('*')
+          .in('project_id', projectIds)
+
+        if (cutPiecesError) throw cutPiecesError
+        cutPiecesData = cutPieces || []
+      }
+
+      // Combine data into project objects
+      const fullProjects = projectsData.map(project => ({
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        workflow: project.workflow,
+        cutPlan: project.cut_plan,
+        createdAt: project.created_at,
+        boards: boardsData
+          .filter(b => b.project_id === project.id)
+          .map(b => ({
+            id: b.id,
+            name: b.name,
+            length: Number(b.length),
+            width: Number(b.width),
+            thickness: b.thickness,
+            thicknessInches: Number(b.thickness_inches),
+            species: b.species,
+            quantity: b.quantity,
+            boardFeetPerPiece: Number(b.board_feet_per_piece),
+            boardFeet: Number(b.board_feet)
+          })),
+        cutPieces: cutPiecesData
+          .filter(c => c.project_id === project.id)
+          .map(c => ({
+            id: c.id,
+            name: c.name,
+            length: Number(c.length),
+            width: Number(c.width),
+            thickness: c.thickness,
+            species: c.species,
+            quantity: c.quantity
+          }))
+      }))
+
+      setProjects(fullProjects)
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error loading projects:', error)
+      setSyncStatus('error')
+    }
+  }
 
   // Get workflow type - default to 'calculate' for backward compatibility
   const workflowType = currentProject?.workflow || 'calculate'
@@ -1013,21 +1299,62 @@ function App() {
     }
   }, [currentProject?.id])
 
-  // Save to localStorage whenever projects change
-  useEffect(() => {
-    localStorage.setItem('boardFootProjects', JSON.stringify(projects))
-  }, [projects])
-
-  // Helper to update current project
-  const updateProject = (updatedProject) => {
+  // Helper to update current project (local state and sync to Supabase)
+  const updateProject = async (updatedProject) => {
     setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
     setCurrentProject(updatedProject)
+
+    // Sync cut_plan to Supabase
+    setSyncStatus('syncing')
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({ cut_plan: updatedProject.cutPlan })
+        .eq('id', updatedProject.id)
+
+      if (error) throw error
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error updating project:', error)
+      setSyncStatus('error')
+    }
   }
 
-  const handleCreateProject = (project) => {
-    setProjects([...projects, project])
-    setCurrentProject(project)
-    setShowProjectForm(false)
+  const handleCreateProject = async (project) => {
+    setSyncStatus('syncing')
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .insert({
+          user_id: session.user.id,
+          name: project.name,
+          description: project.description,
+          workflow: project.workflow
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      const newProject = {
+        id: data.id,
+        name: data.name,
+        description: data.description,
+        workflow: data.workflow,
+        cutPlan: null,
+        createdAt: data.created_at,
+        boards: [],
+        cutPieces: []
+      }
+
+      setProjects([newProject, ...projects])
+      setCurrentProject(newProject)
+      setShowProjectForm(false)
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error creating project:', error)
+      setSyncStatus('error')
+    }
   }
 
   const handleSelectProject = (project) => {
@@ -1037,76 +1364,463 @@ function App() {
     setActiveTab('stock')
   }
 
-  const handleDeleteProject = (projectId) => {
+  const handleDeleteProject = async (projectId) => {
     if (confirm('Are you sure you want to delete this project?')) {
-      setProjects(projects.filter(p => p.id !== projectId))
-      if (currentProject?.id === projectId) {
-        setCurrentProject(null)
+      setSyncStatus('syncing')
+      try {
+        const { error } = await supabase
+          .from('projects')
+          .delete()
+          .eq('id', projectId)
+
+        if (error) throw error
+
+        setProjects(projects.filter(p => p.id !== projectId))
+        if (currentProject?.id === projectId) {
+          setCurrentProject(null)
+        }
+        setSyncStatus('synced')
+      } catch (error) {
+        console.error('Error deleting project:', error)
+        setSyncStatus('error')
       }
     }
   }
 
   // Stock board handlers
-  const handleAddBoard = (board) => {
-    updateProject({
-      ...currentProject,
-      boards: [...currentProject.boards, board],
-      cutPlan: null // Clear cut plan when stock changes
-    })
+  const handleAddBoard = async (board) => {
+    setSyncStatus('syncing')
+    try {
+      const { data, error } = await supabase
+        .from('boards')
+        .insert({
+          project_id: currentProject.id,
+          name: board.name,
+          length: board.length,
+          width: board.width,
+          thickness: board.thickness,
+          thickness_inches: board.thicknessInches,
+          species: board.species,
+          quantity: board.quantity,
+          board_feet_per_piece: board.boardFeetPerPiece,
+          board_feet: board.boardFeet
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      const newBoard = {
+        id: data.id,
+        name: data.name,
+        length: Number(data.length),
+        width: Number(data.width),
+        thickness: data.thickness,
+        thicknessInches: Number(data.thickness_inches),
+        species: data.species,
+        quantity: data.quantity,
+        boardFeetPerPiece: Number(data.board_feet_per_piece),
+        boardFeet: Number(data.board_feet)
+      }
+
+      const updatedProject = {
+        ...currentProject,
+        boards: [...currentProject.boards, newBoard],
+        cutPlan: null
+      }
+      setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+      setCurrentProject(updatedProject)
+
+      // Clear cut_plan in database
+      await supabase
+        .from('projects')
+        .update({ cut_plan: null })
+        .eq('id', currentProject.id)
+
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error adding board:', error)
+      setSyncStatus('error')
+    }
   }
 
-  const handleUpdateBoard = (updatedBoard) => {
-    updateProject({
-      ...currentProject,
-      boards: currentProject.boards.map(b =>
-        b.id === updatedBoard.id ? updatedBoard : b
-      ),
-      cutPlan: null
-    })
-    setEditingBoard(null)
+  const handleUpdateBoard = async (updatedBoard) => {
+    setSyncStatus('syncing')
+    try {
+      const { error } = await supabase
+        .from('boards')
+        .update({
+          name: updatedBoard.name,
+          length: updatedBoard.length,
+          width: updatedBoard.width,
+          thickness: updatedBoard.thickness,
+          thickness_inches: updatedBoard.thicknessInches,
+          species: updatedBoard.species,
+          quantity: updatedBoard.quantity,
+          board_feet_per_piece: updatedBoard.boardFeetPerPiece,
+          board_feet: updatedBoard.boardFeet
+        })
+        .eq('id', updatedBoard.id)
+
+      if (error) throw error
+
+      const updatedProject = {
+        ...currentProject,
+        boards: currentProject.boards.map(b =>
+          b.id === updatedBoard.id ? updatedBoard : b
+        ),
+        cutPlan: null
+      }
+      setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+      setCurrentProject(updatedProject)
+      setEditingBoard(null)
+
+      // Clear cut_plan in database
+      await supabase
+        .from('projects')
+        .update({ cut_plan: null })
+        .eq('id', currentProject.id)
+
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error updating board:', error)
+      setSyncStatus('error')
+    }
   }
 
-  const handleDeleteBoard = (boardId) => {
-    updateProject({
+  const handleDeleteBoard = async (boardId) => {
+    setSyncStatus('syncing')
+    try {
+      const { error } = await supabase
+        .from('boards')
+        .delete()
+        .eq('id', boardId)
+
+      if (error) throw error
+
+      const updatedProject = {
+        ...currentProject,
+        boards: currentProject.boards.filter(b => b.id !== boardId),
+        cutPlan: null
+      }
+      setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+      setCurrentProject(updatedProject)
+
+      // Clear cut_plan in database
+      await supabase
+        .from('projects')
+        .update({ cut_plan: null })
+        .eq('id', currentProject.id)
+
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error deleting board:', error)
+      setSyncStatus('error')
+    }
+  }
+
+  // Board drag and drop handlers
+  const handleBoardDragStart = (e, boardId) => {
+    setDraggingBoardId(boardId)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleBoardDragOver = (e, boardId) => {
+    e.preventDefault()
+    if (boardId !== draggingBoardId) {
+      setDragOverBoardId(boardId)
+    }
+  }
+
+  const handleBoardDrop = async (e, targetBoardId) => {
+    e.preventDefault()
+    if (!draggingBoardId || draggingBoardId === targetBoardId) {
+      setDraggingBoardId(null)
+      setDragOverBoardId(null)
+      return
+    }
+
+    const boards = [...currentProject.boards]
+    const dragIndex = boards.findIndex(b => b.id === draggingBoardId)
+    const dropIndex = boards.findIndex(b => b.id === targetBoardId)
+
+    if (dragIndex === -1 || dropIndex === -1) return
+
+    // Remove from old position and insert at new position
+    const [removed] = boards.splice(dragIndex, 1)
+    boards.splice(dropIndex, 0, removed)
+
+    // Update local state immediately
+    const updatedProject = {
       ...currentProject,
-      boards: currentProject.boards.filter(b => b.id !== boardId),
-      cutPlan: null
-    })
+      boards,
+      cutPlan: null // Clear cut plan since order changed
+    }
+    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+    setCurrentProject(updatedProject)
+
+    setDraggingBoardId(null)
+    setDragOverBoardId(null)
+
+    // Sync new order to Supabase (we store order implicitly via created_at or use a position field)
+    // For now, we'll re-insert boards in order
+    setSyncStatus('syncing')
+    try {
+      // Delete and re-insert all boards in the new order
+      await supabase
+        .from('boards')
+        .delete()
+        .eq('project_id', currentProject.id)
+
+      const boardsToInsert = boards.map(board => ({
+        id: board.id, // Keep same IDs
+        project_id: currentProject.id,
+        name: board.name,
+        length: board.length,
+        width: board.width,
+        thickness: board.thickness,
+        thickness_inches: board.thicknessInches,
+        species: board.species,
+        quantity: board.quantity,
+        board_feet_per_piece: board.boardFeetPerPiece,
+        board_feet: board.boardFeet
+      }))
+
+      await supabase
+        .from('boards')
+        .insert(boardsToInsert)
+
+      // Clear cut_plan
+      await supabase
+        .from('projects')
+        .update({ cut_plan: null })
+        .eq('id', currentProject.id)
+
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error reordering boards:', error)
+      setSyncStatus('error')
+    }
+  }
+
+  const handleBoardDragEnd = () => {
+    setDraggingBoardId(null)
+    setDragOverBoardId(null)
   }
 
   // Cut piece handlers
-  const handleAddCutPiece = (piece) => {
-    const cutPieces = currentProject.cutPieces || []
-    updateProject({
-      ...currentProject,
-      cutPieces: [...cutPieces, piece],
-      cutPlan: null
-    })
+  const handleAddCutPiece = async (piece) => {
+    setSyncStatus('syncing')
+    try {
+      const { data, error } = await supabase
+        .from('cut_pieces')
+        .insert({
+          project_id: currentProject.id,
+          name: piece.name,
+          length: piece.length,
+          width: piece.width,
+          thickness: piece.thickness,
+          species: piece.species,
+          quantity: piece.quantity
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      const newPiece = {
+        id: data.id,
+        name: data.name,
+        length: Number(data.length),
+        width: Number(data.width),
+        thickness: data.thickness,
+        species: data.species,
+        quantity: data.quantity
+      }
+
+      const cutPieces = currentProject.cutPieces || []
+      const updatedProject = {
+        ...currentProject,
+        cutPieces: [...cutPieces, newPiece],
+        cutPlan: null
+      }
+      setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+      setCurrentProject(updatedProject)
+
+      // Clear cut_plan in database
+      await supabase
+        .from('projects')
+        .update({ cut_plan: null })
+        .eq('id', currentProject.id)
+
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error adding cut piece:', error)
+      setSyncStatus('error')
+    }
   }
 
-  const handleUpdateCutPiece = (updatedPiece) => {
-    const cutPieces = currentProject.cutPieces || []
-    updateProject({
-      ...currentProject,
-      cutPieces: cutPieces.map(p =>
-        p.id === updatedPiece.id ? updatedPiece : p
-      ),
-      cutPlan: null
-    })
-    setEditingCutPiece(null)
+  const handleUpdateCutPiece = async (updatedPiece) => {
+    setSyncStatus('syncing')
+    try {
+      const { error } = await supabase
+        .from('cut_pieces')
+        .update({
+          name: updatedPiece.name,
+          length: updatedPiece.length,
+          width: updatedPiece.width,
+          thickness: updatedPiece.thickness,
+          species: updatedPiece.species,
+          quantity: updatedPiece.quantity
+        })
+        .eq('id', updatedPiece.id)
+
+      if (error) throw error
+
+      const cutPieces = currentProject.cutPieces || []
+      const updatedProject = {
+        ...currentProject,
+        cutPieces: cutPieces.map(p =>
+          p.id === updatedPiece.id ? updatedPiece : p
+        ),
+        cutPlan: null
+      }
+      setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+      setCurrentProject(updatedProject)
+      setEditingCutPiece(null)
+
+      // Clear cut_plan in database
+      await supabase
+        .from('projects')
+        .update({ cut_plan: null })
+        .eq('id', currentProject.id)
+
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error updating cut piece:', error)
+      setSyncStatus('error')
+    }
   }
 
-  const handleDeleteCutPiece = (pieceId) => {
-    const cutPieces = currentProject.cutPieces || []
-    updateProject({
+  const handleDeleteCutPiece = async (pieceId) => {
+    setSyncStatus('syncing')
+    try {
+      const { error } = await supabase
+        .from('cut_pieces')
+        .delete()
+        .eq('id', pieceId)
+
+      if (error) throw error
+
+      const cutPieces = currentProject.cutPieces || []
+      const updatedProject = {
+        ...currentProject,
+        cutPieces: cutPieces.filter(p => p.id !== pieceId),
+        cutPlan: null
+      }
+      setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+      setCurrentProject(updatedProject)
+
+      // Clear cut_plan in database
+      await supabase
+        .from('projects')
+        .update({ cut_plan: null })
+        .eq('id', currentProject.id)
+
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error deleting cut piece:', error)
+      setSyncStatus('error')
+    }
+  }
+
+  // Cut piece drag and drop handlers
+  const handleCutPieceDragStart = (e, pieceId) => {
+    setDraggingCutPieceId(pieceId)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleCutPieceDragOver = (e, pieceId) => {
+    e.preventDefault()
+    if (pieceId !== draggingCutPieceId) {
+      setDragOverCutPieceId(pieceId)
+    }
+  }
+
+  const handleCutPieceDrop = async (e, targetPieceId) => {
+    e.preventDefault()
+    if (!draggingCutPieceId || draggingCutPieceId === targetPieceId) {
+      setDraggingCutPieceId(null)
+      setDragOverCutPieceId(null)
+      return
+    }
+
+    const cutPiecesList = [...(currentProject.cutPieces || [])]
+    const dragIndex = cutPiecesList.findIndex(p => p.id === draggingCutPieceId)
+    const dropIndex = cutPiecesList.findIndex(p => p.id === targetPieceId)
+
+    if (dragIndex === -1 || dropIndex === -1) return
+
+    // Remove from old position and insert at new position
+    const [removed] = cutPiecesList.splice(dragIndex, 1)
+    cutPiecesList.splice(dropIndex, 0, removed)
+
+    // Update local state immediately
+    const updatedProject = {
       ...currentProject,
-      cutPieces: cutPieces.filter(p => p.id !== pieceId),
-      cutPlan: null
-    })
+      cutPieces: cutPiecesList,
+      cutPlan: null // Clear cut plan since order changed
+    }
+    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+    setCurrentProject(updatedProject)
+
+    setDraggingCutPieceId(null)
+    setDragOverCutPieceId(null)
+
+    // Sync new order to Supabase
+    setSyncStatus('syncing')
+    try {
+      // Delete and re-insert all cut pieces in the new order
+      await supabase
+        .from('cut_pieces')
+        .delete()
+        .eq('project_id', currentProject.id)
+
+      const piecesToInsert = cutPiecesList.map(piece => ({
+        id: piece.id,
+        project_id: currentProject.id,
+        name: piece.name,
+        length: piece.length,
+        width: piece.width,
+        thickness: piece.thickness,
+        species: piece.species,
+        quantity: piece.quantity
+      }))
+
+      await supabase
+        .from('cut_pieces')
+        .insert(piecesToInsert)
+
+      // Clear cut_plan
+      await supabase
+        .from('projects')
+        .update({ cut_plan: null })
+        .eq('id', currentProject.id)
+
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error reordering cut pieces:', error)
+      setSyncStatus('error')
+    }
+  }
+
+  const handleCutPieceDragEnd = () => {
+    setDraggingCutPieceId(null)
+    setDragOverCutPieceId(null)
   }
 
   // Generate cut plan
-  const handleGenerateCutPlan = () => {
+  const handleGenerateCutPlan = async () => {
     const cutPieces = currentProject.cutPieces || []
     if (cutPieces.length === 0) {
       alert('Add cut pieces first before generating a plan.')
@@ -1117,29 +1831,150 @@ function App() {
       return
     }
 
+    setIsRegenerating(true)
+
+    // Small delay to show the loading state (especially for fast calculations)
+    await new Promise(resolve => setTimeout(resolve, 100))
+
     const cutPlan = optimizeCuts(currentProject.boards, cutPieces)
-    updateProject({
+
+    // Update local state
+    const updatedProject = {
       ...currentProject,
       cutPlan
-    })
+    }
+    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+    setCurrentProject(updatedProject)
     setActiveTab('plan')
+
+    // Sync to Supabase
+    setSyncStatus('syncing')
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({ cut_plan: cutPlan })
+        .eq('id', currentProject.id)
+
+      if (error) throw error
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error saving cut plan:', error)
+      setSyncStatus('error')
+    } finally {
+      setIsRegenerating(false)
+    }
   }
 
   // Apply calculated stock boards to project
-  const handleApplyCalculatedStock = (boards, cutPlan) => {
-    updateProject({
-      ...currentProject,
-      boards,
-      cutPlan
-    })
-    setActiveTab('plan')
+  const handleApplyCalculatedStock = async (boards, cutPlan) => {
+    setSyncStatus('syncing')
+    try {
+      // Delete existing boards for this project
+      await supabase
+        .from('boards')
+        .delete()
+        .eq('project_id', currentProject.id)
+
+      // Insert new boards
+      const boardsToInsert = boards.map(board => ({
+        project_id: currentProject.id,
+        name: board.name,
+        length: board.length,
+        width: board.width,
+        thickness: board.thickness,
+        thickness_inches: board.thicknessInches,
+        species: board.species,
+        quantity: board.quantity || 1,
+        board_feet_per_piece: board.boardFeetPerPiece || board.boardFeet,
+        board_feet: board.boardFeet
+      }))
+
+      const { data: insertedBoards, error: boardsError } = await supabase
+        .from('boards')
+        .insert(boardsToInsert)
+        .select()
+
+      if (boardsError) throw boardsError
+
+      // Update cut_plan in projects
+      const { error: projectError } = await supabase
+        .from('projects')
+        .update({ cut_plan: cutPlan })
+        .eq('id', currentProject.id)
+
+      if (projectError) throw projectError
+
+      // Update local state with new board IDs
+      const newBoards = insertedBoards.map(b => ({
+        id: b.id,
+        name: b.name,
+        length: Number(b.length),
+        width: Number(b.width),
+        thickness: b.thickness,
+        thicknessInches: Number(b.thickness_inches),
+        species: b.species,
+        quantity: b.quantity,
+        boardFeetPerPiece: Number(b.board_feet_per_piece),
+        boardFeet: Number(b.board_feet)
+      }))
+
+      const updatedProject = {
+        ...currentProject,
+        boards: newBoards,
+        cutPlan
+      }
+      setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+      setCurrentProject(updatedProject)
+      setActiveTab('plan')
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error applying calculated stock:', error)
+      setSyncStatus('error')
+    }
+  }
+
+  // Sign out handler
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    setCurrentProject(null)
+    setProjects([])
   }
 
   const availableThicknesses = currentProject ? getStockThicknesses(currentProject.boards) : []
+  const availableSpecies = currentProject
+    ? [...new Set(currentProject.boards.map(b => b.species).filter(Boolean))]
+    : []
   const cutPieces = currentProject?.cutPieces || []
+
+  // Show loading spinner while checking auth
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <p>Loading...</p>
+      </div>
+    )
+  }
+
+  // Show auth form if not logged in
+  if (!session) {
+    return <Auth />
+  }
 
   return (
     <div className="app">
+      {/* User header with sign out */}
+      <div className="user-header">
+        <span className="user-email">{session.user.email}</span>
+        <div className="sync-status">
+          <span className={`sync-indicator ${syncStatus}`}></span>
+          <span>{syncStatus === 'syncing' ? 'Syncing...' : syncStatus === 'error' ? 'Sync error' : 'Synced'}</span>
+        </div>
+        <button onClick={handleSignOut} className="btn-signout">
+          Sign Out
+        </button>
+      </div>
+
       <header>
         <h1>Board Foot Calculator</h1>
         <p className="subtitle">Calculate lumber requirements for your woodworking projects</p>
@@ -1322,12 +2157,19 @@ function App() {
                         {currentProject.boards.length > 0 && (
                           <div className="board-list">
                             <h3>Stock Boards</h3>
+                            <p className="reorder-hint">Drag to reorder</p>
                             {currentProject.boards.map(board => (
                               <BoardItem
                                 key={board.id}
                                 board={board}
                                 onEdit={setEditingBoard}
                                 onDelete={handleDeleteBoard}
+                                onDragStart={handleBoardDragStart}
+                                onDragOver={handleBoardDragOver}
+                                onDrop={handleBoardDrop}
+                                onDragEnd={handleBoardDragEnd}
+                                isDragging={draggingBoardId === board.id}
+                                isDragOver={dragOverBoardId === board.id}
                               />
                             ))}
 
@@ -1350,12 +2192,33 @@ function App() {
                         {workflowType === 'calculate' && currentProject.boards.length > 0 && cutPieces.length > 0 && (
                           <div className="recalculate-section">
                             <button
-                              onClick={() => {
-                                updateProject({
-                                  ...currentProject,
-                                  boards: [],
-                                  cutPlan: null
-                                })
+                              onClick={async () => {
+                                setSyncStatus('syncing')
+                                try {
+                                  // Delete all boards for this project
+                                  await supabase
+                                    .from('boards')
+                                    .delete()
+                                    .eq('project_id', currentProject.id)
+
+                                  // Clear cut_plan
+                                  await supabase
+                                    .from('projects')
+                                    .update({ cut_plan: null })
+                                    .eq('id', currentProject.id)
+
+                                  const updatedProject = {
+                                    ...currentProject,
+                                    boards: [],
+                                    cutPlan: null
+                                  }
+                                  setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+                                  setCurrentProject(updatedProject)
+                                  setSyncStatus('synced')
+                                } catch (error) {
+                                  console.error('Error clearing boards:', error)
+                                  setSyncStatus('error')
+                                }
                               }}
                               className="btn-secondary"
                             >
@@ -1377,23 +2240,32 @@ function App() {
                         onSubmit={handleUpdateCutPiece}
                         onCancel={() => setEditingCutPiece(null)}
                         availableThicknesses={availableThicknesses}
+                        availableSpecies={availableSpecies}
                       />
                     ) : (
                       <CutPieceForm
                         onSubmit={handleAddCutPiece}
                         availableThicknesses={availableThicknesses}
+                        availableSpecies={availableSpecies}
                       />
                     )}
 
                     {cutPieces.length > 0 && (
                       <div className="cut-piece-list">
                         <h3>Cut Pieces</h3>
+                        <p className="reorder-hint">Drag to reorder</p>
                         {cutPieces.map(piece => (
                           <CutPieceItem
                             key={piece.id}
                             piece={piece}
                             onEdit={setEditingCutPiece}
                             onDelete={handleDeleteCutPiece}
+                            onDragStart={handleCutPieceDragStart}
+                            onDragOver={handleCutPieceDragOver}
+                            onDrop={handleCutPieceDrop}
+                            onDragEnd={handleCutPieceDragEnd}
+                            isDragging={draggingCutPieceId === piece.id}
+                            isDragOver={dragOverCutPieceId === piece.id}
                           />
                         ))}
                       </div>
@@ -1448,6 +2320,7 @@ function App() {
                       <CutPlanDisplay
                         cutPlan={currentProject.cutPlan}
                         onRegenerate={handleGenerateCutPlan}
+                        isRegenerating={isRegenerating}
                       />
                     ) : (
                       <div className="no-plan">

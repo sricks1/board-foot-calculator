@@ -15,7 +15,8 @@ A web application for woodworkers to manage lumber inventory, plan cuts, and opt
 - **Cut Plan Optimizer**: Generate optimized cutting layouts using strip-based guillotine cutting
 - **Visual Diagrams**: SVG-based cut plan visualization showing piece placement on boards
 - **PDF Export**: Generate professional documents with tables and visual cut diagrams
-- **Data Persistence**: All data saved to browser localStorage
+- **Cloud Sync**: User accounts with Supabase - access your projects from any device
+- **User Authentication**: Secure email/password sign-up and sign-in
 
 ---
 
@@ -23,9 +24,12 @@ A web application for woodworkers to manage lumber inventory, plan cuts, and opt
 
 ### Getting Started
 
-1. Click **"+ New Project"** to create a project
-2. Enter a project name and optional description
-3. Navigate between three tabs: **Stock Boards**, **Cut List**, **Cut Plan**
+1. **Sign up** for an account or **sign in** if you already have one
+2. Click **"+ New Project"** to create a project
+3. Enter a project name and optional description
+4. Navigate between three tabs: **Stock Boards**, **Cut List**, **Cut Plan**
+
+Your projects are automatically saved to the cloud and accessible from any device.
 
 ### Stock Boards Tab
 
@@ -76,20 +80,22 @@ Click **"Export to PDF"** to generate a document containing:
 |------------|---------|
 | React 18 | UI framework |
 | Vite | Build tool |
+| Supabase | Authentication & Database |
 | jsPDF | PDF generation |
-| localStorage | Data persistence |
 | CSS3 | Styling with custom properties |
 
 ### Project Structure
 
 ```
 src/
-├── App.jsx          # Main application component
-├── App.css          # Application styles
-├── cutOptimizer.js  # Cut optimization algorithm
-├── pdfExport.js     # PDF generation
-├── main.jsx         # React entry point
-└── index.css        # Global styles & CSS variables
+├── App.jsx           # Main application component
+├── App.css           # Application styles
+├── Auth.jsx          # Authentication component
+├── supabaseClient.js # Supabase configuration
+├── cutOptimizer.js   # Cut optimization algorithm
+├── pdfExport.js      # PDF generation
+├── main.jsx          # React entry point
+└── index.css         # Global styles & CSS variables
 ```
 
 ### Cut Optimization Algorithm
@@ -235,7 +241,19 @@ The optimizer accounts for **1/8" (0.125")** material loss between cuts.
 | "No stock boards with thickness X" | Add stock boards with the required thickness |
 | "Could not fit piece on any stock" | Add larger stock boards or reduce piece dimensions |
 | Low efficiency | Add smaller pieces to fill gaps, or use larger stock |
-| Data disappeared | Browser data was cleared; localStorage cannot be recovered |
+| Login issues | Check email confirmation; use "Forgot Password" if needed |
+| Sync error | Check internet connection; data will sync when restored |
+
+---
+
+## Supabase Setup (For Developers)
+
+If you're setting up your own instance:
+
+1. Create a Supabase project at [supabase.com](https://supabase.com)
+2. Run the SQL from `supabase-schema.sql` in the Supabase SQL Editor
+3. Update `src/supabaseClient.js` with your project URL and anon key
+4. Enable Email Auth in Authentication > Providers
 
 ---
 
