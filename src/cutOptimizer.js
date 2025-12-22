@@ -451,25 +451,133 @@ export function getCutPieceThicknesses(pieces) {
 
 /**
  * Calculate how many stock boards are needed to fit all cut pieces
- * Uses the same optimization algorithm to determine actual board count
+ * Supports multiple board templates for optimal material usage
  *
  * @param {Array} cutPieces - Array of cut pieces needed
- * @param {Object} stockTemplate - Template for stock boards { length, width, thickness }
+ * @param {Array} stockTemplates - Array of templates { length, width, thickness, name }
  * @param {number} kerf - Saw blade kerf (default 1/8")
- * @returns {Object} - { boardsNeeded, boards, cutPlan }
+ * @returns {Object} - { boardsNeeded, boards, cutPlan, boardsByTemplate }
  */
-export function calculateStockNeeded(cutPieces, stockTemplate, kerf = DEFAULT_KERF) {
+export function calculateStockNeeded(cutPieces, stockTemplates, kerf = DEFAULT_KERF) {
+  if (!cutPieces || cutPieces.length === 0) {
+    return { boardsNeeded: 0, boards: [], cutPlan: null, boardsByTemplate: [] }
+  }
+
+  // Normalize to array
+  const templates = Array.isArray(stockTemplates) ? stockTemplates : [stockTemplates]
+
+  if (templates.length === 0) {
+    return { boardsNeeded: 0, boards: [], cutPlan: null, boardsByTemplate: [] }
+  }
+
+  // Group cut pieces by thickness
+  const piecesByThickness = {}
+  cutPieces.forEach(piece => {
+    const t = piece.thickness || '4/4'
+    if (!piecesByThickness[t]) {
+      piecesByThickness[t] = []
+    }
+    piecesByThickness[t].push(piece)
+  })
+
+  // For single template, use simple binary search
+  if (templates.length === 1) {
+    const template = templates[0]
+    const result = calculateStockForSingleTemplate(cutPieces, template, kerf)
+    return {
+      ...result,
+      boardsByTemplate: [{ template, count: result.boardsNeeded }]
+    }
+  }
+
+  // For multiple templates, try to optimize across all
+  // Strategy: For each thickness group, try different combinations
+  const allBoards = []
+  const boardsByTemplate = templates.map(t => ({ template: t, count: 0 }))
+  let remainingPieces = [...cutPieces]
+
+  // Sort templates by width (widest first) for better matching
+  const sortedTemplateIndices = templates
+    .map((t, i) => ({ template: t, index: i }))
+    .sort((a, b) => b.template.width - a.template.width)
+
+  // Try to fit pieces starting with boards that best match piece widths
+  for (const { template, index } of sortedTemplateIndices) {
+    if (remainingPieces.length === 0) break
+
+    // Find pieces that fit this template's width well
+    const templateThickness = parseThickness(template.thickness) || 1
+    const matchingPieces = remainingPieces.filter(p => {
+      const pThickness = parseThickness(p.thickness) || 1
+      return Math.abs(pThickness - templateThickness) < 0.01 && p.width <= template.width
+    })
+
+    if (matchingPieces.length === 0) continue
+
+    // Calculate how many of this template we need
+    const result = calculateStockForSingleTemplate(matchingPieces, template, kerf)
+
+    if (result.boards.length > 0) {
+      // Add boards with unique IDs
+      const baseId = Date.now() + index * 1000
+      result.boards.forEach((board, i) => {
+        board.id = baseId + i
+        board.templateIndex = index
+        allBoards.push(board)
+      })
+      boardsByTemplate[index].count = result.boards.length
+
+      // Remove placed pieces from remaining
+      const placedIds = new Set()
+      result.cutPlan.assignments.forEach(a => {
+        a.cuts.forEach(c => placedIds.add(c.cutPieceId))
+      })
+      remainingPieces = remainingPieces.filter(p => !placedIds.has(p.id))
+    }
+  }
+
+  // If there are still remaining pieces, add more boards from the best-fitting template
+  if (remainingPieces.length > 0) {
+    // Find template that can fit the remaining pieces
+    for (const { template, index } of sortedTemplateIndices) {
+      const additionalResult = calculateStockForSingleTemplate(remainingPieces, template, kerf)
+      if (additionalResult.cutPlan && additionalResult.cutPlan.unplacedPieces.length < remainingPieces.length) {
+        const baseId = Date.now() + 10000 + index * 1000
+        additionalResult.boards.forEach((board, i) => {
+          board.id = baseId + i
+          board.templateIndex = index
+          allBoards.push(board)
+        })
+        boardsByTemplate[index].count += additionalResult.boards.length
+        break
+      }
+    }
+  }
+
+  // Generate final cut plan with all boards
+  const finalCutPlan = optimizeCuts(allBoards, cutPieces, kerf)
+
+  return {
+    boardsNeeded: allBoards.length,
+    boards: allBoards,
+    cutPlan: finalCutPlan,
+    boardsByTemplate: boardsByTemplate.filter(b => b.count > 0)
+  }
+}
+
+/**
+ * Helper function for single template calculation
+ */
+function calculateStockForSingleTemplate(cutPieces, stockTemplate, kerf) {
   if (!cutPieces || cutPieces.length === 0) {
     return { boardsNeeded: 0, boards: [], cutPlan: null }
   }
 
-  // Start with an estimate based on board feet + 20% waste factor
   const totalCutBF = calculateCutPiecesBF(cutPieces)
   const templateThickness = parseThickness(stockTemplate.thickness) || 1
   const templateBF = (stockTemplate.length * stockTemplate.width * templateThickness) / 144
   const estimatedBoards = Math.max(1, Math.ceil((totalCutBF * 1.2) / templateBF))
 
-  // Binary search to find minimum boards needed
   let low = 1
   let high = Math.max(estimatedBoards * 2, 10)
   let result = null
@@ -477,7 +585,6 @@ export function calculateStockNeeded(cutPieces, stockTemplate, kerf = DEFAULT_KE
   while (low <= high) {
     const mid = Math.floor((low + high) / 2)
 
-    // Create test boards
     const testBoards = []
     for (let i = 0; i < mid; i++) {
       testBoards.push({
@@ -492,20 +599,16 @@ export function calculateStockNeeded(cutPieces, stockTemplate, kerf = DEFAULT_KE
       })
     }
 
-    // Try to fit all pieces
     const cutPlan = optimizeCuts(testBoards, cutPieces, kerf)
 
     if (cutPlan.unplacedPieces.length === 0) {
-      // All pieces fit, try fewer boards
       result = { boardsNeeded: mid, boards: testBoards, cutPlan }
       high = mid - 1
     } else {
-      // Not all pieces fit, need more boards
       low = mid + 1
     }
   }
 
-  // If no solution found (pieces too big), return with warnings
   if (!result) {
     const testBoards = []
     for (let i = 0; i < high + 1; i++) {
