@@ -470,86 +470,57 @@ export function calculateStockNeeded(cutPieces, stockTemplates, kerf = DEFAULT_K
     return { boardsNeeded: 0, boards: [], cutPlan: null, boardsByTemplate: [] }
   }
 
+  // Group templates by thickness
+  const templatesByThickness = {}
+  templates.forEach(t => {
+    const thickness = t.thickness || '4/4'
+    if (!templatesByThickness[thickness]) {
+      templatesByThickness[thickness] = []
+    }
+    templatesByThickness[thickness].push(t)
+  })
+
   // Group cut pieces by thickness
   const piecesByThickness = {}
   cutPieces.forEach(piece => {
-    const t = piece.thickness || '4/4'
-    if (!piecesByThickness[t]) {
-      piecesByThickness[t] = []
+    const thickness = piece.thickness || '4/4'
+    if (!piecesByThickness[thickness]) {
+      piecesByThickness[thickness] = []
     }
-    piecesByThickness[t].push(piece)
+    piecesByThickness[thickness].push(piece)
   })
 
-  // For single template, use simple binary search
-  if (templates.length === 1) {
-    const template = templates[0]
-    const result = calculateStockForSingleTemplate(cutPieces, template, kerf)
-    return {
-      ...result,
-      boardsByTemplate: [{ template, count: result.boardsNeeded }]
-    }
-  }
-
-  // For multiple templates, try to optimize across all
-  // Strategy: For each thickness group, try different combinations
+  // Calculate stock needed for each thickness group separately
   const allBoards = []
-  const boardsByTemplate = templates.map(t => ({ template: t, count: 0 }))
-  let remainingPieces = [...cutPieces]
+  const allBoardsByTemplate = []
+  let boardIdCounter = Date.now()
 
-  // Sort templates by width (widest first) for better matching
-  const sortedTemplateIndices = templates
-    .map((t, i) => ({ template: t, index: i }))
-    .sort((a, b) => b.template.width - a.template.width)
+  for (const thickness in piecesByThickness) {
+    const piecesForThickness = piecesByThickness[thickness]
+    const templatesForThickness = templatesByThickness[thickness] || []
 
-  // Try to fit pieces starting with boards that best match piece widths
-  for (const { template, index } of sortedTemplateIndices) {
-    if (remainingPieces.length === 0) break
+    if (templatesForThickness.length === 0) {
+      // No templates for this thickness - will show as warning
+      continue
+    }
 
-    // Find pieces that fit this template's width well
-    const templateThickness = parseThickness(template.thickness) || 1
-    const matchingPieces = remainingPieces.filter(p => {
-      const pThickness = parseThickness(p.thickness) || 1
-      return Math.abs(pThickness - templateThickness) < 0.01 && p.width <= template.width
-    })
+    // Calculate for this thickness group
+    let result
+    if (templatesForThickness.length === 1) {
+      result = calculateStockForSingleTemplate(piecesForThickness, templatesForThickness[0], kerf)
+    } else {
+      result = calculateStockForMultipleTemplates(piecesForThickness, templatesForThickness, kerf)
+    }
 
-    if (matchingPieces.length === 0) continue
-
-    // Calculate how many of this template we need
-    const result = calculateStockForSingleTemplate(matchingPieces, template, kerf)
-
-    if (result.boards.length > 0) {
-      // Add boards with unique IDs
-      const baseId = Date.now() + index * 1000
-      result.boards.forEach((board, i) => {
-        board.id = baseId + i
-        board.templateIndex = index
+    if (result && result.boards) {
+      // Add unique IDs to boards
+      result.boards.forEach(board => {
+        board.id = boardIdCounter++
         allBoards.push(board)
       })
-      boardsByTemplate[index].count = result.boards.length
 
-      // Remove placed pieces from remaining
-      const placedIds = new Set()
-      result.cutPlan.assignments.forEach(a => {
-        a.cuts.forEach(c => placedIds.add(c.cutPieceId))
-      })
-      remainingPieces = remainingPieces.filter(p => !placedIds.has(p.id))
-    }
-  }
-
-  // If there are still remaining pieces, add more boards from the best-fitting template
-  if (remainingPieces.length > 0) {
-    // Find template that can fit the remaining pieces
-    for (const { template, index } of sortedTemplateIndices) {
-      const additionalResult = calculateStockForSingleTemplate(remainingPieces, template, kerf)
-      if (additionalResult.cutPlan && additionalResult.cutPlan.unplacedPieces.length < remainingPieces.length) {
-        const baseId = Date.now() + 10000 + index * 1000
-        additionalResult.boards.forEach((board, i) => {
-          board.id = baseId + i
-          board.templateIndex = index
-          allBoards.push(board)
-        })
-        boardsByTemplate[index].count += additionalResult.boards.length
-        break
+      if (result.boardsByTemplate) {
+        allBoardsByTemplate.push(...result.boardsByTemplate)
       }
     }
   }
@@ -561,8 +532,115 @@ export function calculateStockNeeded(cutPieces, stockTemplates, kerf = DEFAULT_K
     boardsNeeded: allBoards.length,
     boards: allBoards,
     cutPlan: finalCutPlan,
-    boardsByTemplate: boardsByTemplate.filter(b => b.count > 0)
+    boardsByTemplate: allBoardsByTemplate
   }
+}
+
+/**
+ * Calculate stock for multiple templates of the same thickness
+ */
+function calculateStockForMultipleTemplates(cutPieces, templates, kerf) {
+  const templateThickness = parseThickness(templates[0].thickness) || 1
+
+  // Calculate estimated boards needed
+  const totalCutBF = calculateCutPiecesBF(cutPieces)
+  const avgTemplateBF = templates.reduce((sum, t) => {
+    return sum + (t.length * t.width * templateThickness) / 144
+  }, 0) / templates.length
+  const estimatedBoards = Math.max(1, Math.ceil((totalCutBF * 1.3) / avgTemplateBF))
+
+  // Find minimum boards needed by testing incrementally
+  for (let totalBoards = 1; totalBoards <= estimatedBoards * 3; totalBoards++) {
+    const result = tryBoardDistribution(cutPieces, templates, totalBoards, kerf)
+    if (result) {
+      return result
+    }
+  }
+
+  // Fallback: use first template only
+  return calculateStockForSingleTemplate(cutPieces, templates[0], kerf)
+}
+
+/**
+ * Try different distributions of boards across templates for a given total
+ */
+function tryBoardDistribution(cutPieces, templates, totalBoards, kerf) {
+  // Generate all possible distributions of totalBoards across templates
+  const distributions = generateDistributions(templates.length, totalBoards)
+
+  let bestResult = null
+  let bestEfficiency = 0
+
+  for (const dist of distributions) {
+    // Build test boards array
+    const testBoards = []
+    const boardsByTemplate = []
+    let boardId = Date.now()
+
+    templates.forEach((template, idx) => {
+      const count = dist[idx]
+      boardsByTemplate.push({ template, count })
+
+      const thicknessInches = parseThickness(template.thickness) || 1
+      const bf = (template.length * template.width * thicknessInches) / 144
+      for (let i = 0; i < count; i++) {
+        testBoards.push({
+          id: boardId++,
+          name: `${template.name || 'Board'} ${i + 1}`,
+          length: template.length,
+          width: template.width,
+          thickness: template.thickness,
+          thicknessInches: thicknessInches,
+          quantity: 1,
+          boardFeet: bf,
+          templateIndex: idx
+        })
+      }
+    })
+
+    if (testBoards.length === 0) continue
+
+    // Test this distribution
+    const cutPlan = optimizeCuts(testBoards, cutPieces, kerf)
+
+    if (cutPlan.unplacedPieces.length === 0) {
+      // All pieces fit - check if this is better than previous results
+      if (cutPlan.efficiency > bestEfficiency) {
+        bestEfficiency = cutPlan.efficiency
+        bestResult = {
+          boardsNeeded: testBoards.length,
+          boards: testBoards,
+          cutPlan,
+          boardsByTemplate: boardsByTemplate.filter(b => b.count > 0)
+        }
+      }
+    }
+  }
+
+  return bestResult
+}
+
+/**
+ * Generate all distributions of n items across k buckets
+ */
+function generateDistributions(numTemplates, total) {
+  const results = []
+
+  function generate(remaining, buckets, index) {
+    if (index === numTemplates - 1) {
+      buckets[index] = remaining
+      results.push([...buckets])
+      return
+    }
+
+    for (let i = 0; i <= remaining; i++) {
+      buckets[index] = i
+      generate(remaining - i, buckets, index + 1)
+    }
+  }
+
+  generate(total, new Array(numTemplates).fill(0), 0)
+  return results
 }
 
 /**

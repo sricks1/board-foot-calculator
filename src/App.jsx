@@ -407,7 +407,7 @@ function CutPieceItem({ piece, onEdit, onDelete }) {
 // Stock Calculator Component - calculates how many boards needed
 function StockCalculator({ cutPieces, onApplyStock }) {
   const [selectedTemplates, setSelectedTemplates] = useState([2]) // Default to 8ft × 6"
-  const [selectedThickness, setSelectedThickness] = useState('4/4')
+  const [selectedThicknesses, setSelectedThicknesses] = useState(['4/4'])
   const [customLength, setCustomLength] = useState(96)
   const [customWidth, setCustomWidth] = useState(6)
   const [useCustom, setUseCustom] = useState(false)
@@ -417,12 +417,12 @@ function StockCalculator({ cutPieces, onApplyStock }) {
   // Get unique thicknesses from cut pieces
   const cutPieceThicknesses = getCutPieceThicknesses(cutPieces)
 
-  // Auto-set thickness from cut pieces if they all use the same thickness
+  // Auto-set thickness from cut pieces on initial load
   useEffect(() => {
-    if (cutPieceThicknesses.length === 1) {
-      setSelectedThickness(cutPieceThicknesses[0])
+    if (cutPieceThicknesses.length > 0) {
+      setSelectedThicknesses(cutPieceThicknesses)
     }
-  }, [cutPieceThicknesses])
+  }, [cutPieceThicknesses.length])
 
   const handleTemplateToggle = (templateId) => {
     setSelectedTemplates(prev => {
@@ -437,24 +437,43 @@ function StockCalculator({ cutPieces, onApplyStock }) {
     setResult(null) // Clear results when selection changes
   }
 
+  const handleThicknessToggle = (thickness) => {
+    setSelectedThicknesses(prev => {
+      if (prev.includes(thickness)) {
+        // Don't allow deselecting if it's the only one
+        if (prev.length === 1) return prev
+        return prev.filter(t => t !== thickness)
+      } else {
+        return [...prev, thickness]
+      }
+    })
+    setResult(null) // Clear results when selection changes
+  }
+
   const handleCalculate = () => {
     setCalculating(true)
 
-    let templates
+    // Build templates for each combination of size and thickness
+    let templates = []
     if (useCustom) {
-      templates = [{
-        name: 'Custom Board',
-        length: customLength,
-        width: customWidth,
-        thickness: selectedThickness
-      }]
+      selectedThicknesses.forEach(thickness => {
+        templates.push({
+          name: `Custom Board (${thickness})`,
+          length: customLength,
+          width: customWidth,
+          thickness: thickness
+        })
+      })
     } else {
-      templates = selectedTemplates.map(id => {
+      selectedTemplates.forEach(id => {
         const tmpl = STOCK_TEMPLATES.find(t => t.id === id)
-        return {
-          ...tmpl,
-          thickness: selectedThickness
-        }
+        selectedThicknesses.forEach(thickness => {
+          templates.push({
+            ...tmpl,
+            name: `${tmpl.name} (${thickness})`,
+            thickness: thickness
+          })
+        })
       })
     }
 
@@ -477,7 +496,8 @@ function StockCalculator({ cutPieces, onApplyStock }) {
     return result.boards.reduce((sum, board) => sum + board.boardFeet, 0)
   }
 
-  const thicknessInches = parseThickness(selectedThickness) || 1
+  // Use the first selected thickness for display calculations
+  const thicknessInches = parseThickness(selectedThicknesses[0]) || 1
 
   return (
     <div className="stock-calculator">
@@ -487,27 +507,31 @@ function StockCalculator({ cutPieces, onApplyStock }) {
       </p>
 
       <div className="stock-template-selector">
-        {/* Thickness Selection */}
+        {/* Thickness Selection - Multiple */}
         <div className="thickness-selector">
-          <label>Board Thickness</label>
+          <label>Board Thickness (select all that apply)</label>
           <div className="thickness-options">
             {THICKNESS_OPTIONS.map(opt => (
               <button
                 key={opt}
-                className={`thickness-btn ${selectedThickness === opt ? 'active' : ''}`}
-                onClick={() => {
-                  setSelectedThickness(opt)
-                  setResult(null)
-                }}
+                className={`thickness-btn ${selectedThicknesses.includes(opt) ? 'active' : ''}`}
+                onClick={() => handleThicknessToggle(opt)}
               >
                 {opt}
               </button>
             ))}
           </div>
-          {cutPieceThicknesses.length > 0 && !cutPieceThicknesses.includes(selectedThickness) && (
+          {cutPieceThicknesses.length > 0 &&
+           !cutPieceThicknesses.every(t => selectedThicknesses.includes(t)) && (
             <div className="warning" style={{ marginTop: '0.5rem' }}>
               Your cut pieces use {cutPieceThicknesses.join(', ')} thickness.
+              Make sure to select matching thicknesses.
             </div>
+          )}
+          {selectedThicknesses.length > 1 && (
+            <p className="multi-select-info" style={{ marginTop: '0.5rem' }}>
+              Using {selectedThicknesses.length} thicknesses: {selectedThicknesses.join(', ')}
+            </p>
           )}
         </div>
 
@@ -888,6 +912,7 @@ function ProjectSummary({ project }) {
 function ProjectForm({ onSubmit }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [workflow, setWorkflow] = useState('calculate') // 'known' or 'calculate'
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -900,6 +925,7 @@ function ProjectForm({ onSubmit }) {
       boards: [],
       cutPieces: [],
       cutPlan: null,
+      workflow: workflow,
       createdAt: new Date().toISOString()
     })
   }
@@ -931,6 +957,34 @@ function ProjectForm({ onSubmit }) {
         />
       </div>
 
+      <div className="form-group">
+        <label>How would you like to start?</label>
+        <div className="workflow-selector">
+          <div
+            className={`workflow-option ${workflow === 'calculate' ? 'selected' : ''}`}
+            onClick={() => setWorkflow('calculate')}
+          >
+            <div className="workflow-icon">📐</div>
+            <div className="workflow-content">
+              <h4>Calculate Stock Needed</h4>
+              <p>Start with your cut list, then calculate how much lumber to buy</p>
+              <span className="workflow-steps">Cut List → Calculate Stock → Cut Plan</span>
+            </div>
+          </div>
+          <div
+            className={`workflow-option ${workflow === 'known' ? 'selected' : ''}`}
+            onClick={() => setWorkflow('known')}
+          >
+            <div className="workflow-icon">🪵</div>
+            <div className="workflow-content">
+              <h4>I Have My Lumber</h4>
+              <p>Start with lumber you already have, then plan your cuts</p>
+              <span className="workflow-steps">Stock Boards → Cut List → Cut Plan</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <button type="submit" className="btn-primary">Create Project</button>
     </form>
   )
@@ -946,7 +1000,18 @@ function App() {
   const [editingBoard, setEditingBoard] = useState(null)
   const [editingCutPiece, setEditingCutPiece] = useState(null)
   const [showProjectForm, setShowProjectForm] = useState(false)
-  const [activeTab, setActiveTab] = useState('stock') // 'stock' | 'cutlist' | 'plan'
+  const [activeTab, setActiveTab] = useState('cutlist') // Default based on workflow
+
+  // Get workflow type - default to 'calculate' for backward compatibility
+  const workflowType = currentProject?.workflow || 'calculate'
+
+  // Set initial tab based on workflow when project changes
+  useEffect(() => {
+    if (currentProject) {
+      const wf = currentProject.workflow || 'calculate'
+      setActiveTab(wf === 'known' ? 'stock' : 'cutlist')
+    }
+  }, [currentProject?.id])
 
   // Save to localStorage whenever projects change
   useEffect(() => {
@@ -1157,26 +1222,66 @@ function App() {
               </div>
             </div>
 
-            {/* Tab Navigation */}
+            {/* Workflow Indicator */}
+            <div className="workflow-indicator">
+              {workflowType === 'calculate' ? (
+                <span>📐 Calculate Stock Workflow</span>
+              ) : (
+                <span>🪵 Known Stock Workflow</span>
+              )}
+            </div>
+
+            {/* Tab Navigation - Order based on workflow */}
             <div className="tab-nav">
-              <button
-                className={`tab-btn ${activeTab === 'stock' ? 'active' : ''}`}
-                onClick={() => setActiveTab('stock')}
-              >
-                Stock Boards ({currentProject.boards.length})
-              </button>
-              <button
-                className={`tab-btn ${activeTab === 'cutlist' ? 'active' : ''}`}
-                onClick={() => setActiveTab('cutlist')}
-              >
-                Cut List ({cutPieces.length})
-              </button>
-              <button
-                className={`tab-btn ${activeTab === 'plan' ? 'active' : ''}`}
-                onClick={() => setActiveTab('plan')}
-              >
-                Cut Plan {currentProject.cutPlan ? '✓' : ''}
-              </button>
+              {workflowType === 'calculate' ? (
+                <>
+                  <button
+                    className={`tab-btn ${activeTab === 'cutlist' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('cutlist')}
+                  >
+                    <span className="tab-step">1</span>
+                    Cut List ({cutPieces.length})
+                  </button>
+                  <button
+                    className={`tab-btn ${activeTab === 'stock' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('stock')}
+                  >
+                    <span className="tab-step">2</span>
+                    Stock Boards ({currentProject.boards.length})
+                  </button>
+                  <button
+                    className={`tab-btn ${activeTab === 'plan' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('plan')}
+                  >
+                    <span className="tab-step">3</span>
+                    Cut Plan {currentProject.cutPlan ? '✓' : ''}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    className={`tab-btn ${activeTab === 'stock' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('stock')}
+                  >
+                    <span className="tab-step">1</span>
+                    Stock Boards ({currentProject.boards.length})
+                  </button>
+                  <button
+                    className={`tab-btn ${activeTab === 'cutlist' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('cutlist')}
+                  >
+                    <span className="tab-step">2</span>
+                    Cut List ({cutPieces.length})
+                  </button>
+                  <button
+                    className={`tab-btn ${activeTab === 'plan' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('plan')}
+                  >
+                    <span className="tab-step">3</span>
+                    Cut Plan {currentProject.cutPlan ? '✓' : ''}
+                  </button>
+                </>
+              )}
             </div>
 
             <div className="project-content">
@@ -1184,28 +1289,81 @@ function App() {
                 {/* Stock Boards Tab */}
                 {activeTab === 'stock' && (
                   <div className="boards-section">
-                    {editingBoard ? (
-                      <BoardForm
-                        initialData={editingBoard}
-                        onSubmit={handleUpdateBoard}
-                        onCancel={() => setEditingBoard(null)}
+                    {/* For "calculate" workflow, show calculator if no boards yet */}
+                    {workflowType === 'calculate' && currentProject.boards.length === 0 && cutPieces.length > 0 ? (
+                      <StockCalculator
+                        cutPieces={cutPieces}
+                        onApplyStock={handleApplyCalculatedStock}
                       />
-                    ) : (
-                      <BoardForm onSubmit={handleAddBoard} />
-                    )}
-
-                    {currentProject.boards.length > 0 && (
-                      <div className="board-list">
-                        <h3>Stock Boards</h3>
-                        {currentProject.boards.map(board => (
-                          <BoardItem
-                            key={board.id}
-                            board={board}
-                            onEdit={setEditingBoard}
-                            onDelete={handleDeleteBoard}
-                          />
-                        ))}
+                    ) : workflowType === 'calculate' && currentProject.boards.length === 0 && cutPieces.length === 0 ? (
+                      <div className="workflow-prompt">
+                        <h3>Step 2: Calculate Stock Needed</h3>
+                        <p>First, add your cut pieces in the Cut List tab to calculate how much lumber you need.</p>
+                        <button
+                          onClick={() => setActiveTab('cutlist')}
+                          className="btn-primary"
+                        >
+                          Go to Cut List
+                        </button>
                       </div>
+                    ) : (
+                      <>
+                        {/* Show form for manual entry or editing */}
+                        {editingBoard ? (
+                          <BoardForm
+                            initialData={editingBoard}
+                            onSubmit={handleUpdateBoard}
+                            onCancel={() => setEditingBoard(null)}
+                          />
+                        ) : (
+                          <BoardForm onSubmit={handleAddBoard} />
+                        )}
+
+                        {currentProject.boards.length > 0 && (
+                          <div className="board-list">
+                            <h3>Stock Boards</h3>
+                            {currentProject.boards.map(board => (
+                              <BoardItem
+                                key={board.id}
+                                board={board}
+                                onEdit={setEditingBoard}
+                                onDelete={handleDeleteBoard}
+                              />
+                            ))}
+
+                            {/* Next step prompt for "known" workflow */}
+                            {workflowType === 'known' && cutPieces.length === 0 && (
+                              <div className="next-step-prompt">
+                                <p>Stock boards added! Now add your cut pieces.</p>
+                                <button
+                                  onClick={() => setActiveTab('cutlist')}
+                                  className="btn-primary"
+                                >
+                                  Continue to Cut List →
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Recalculate option for "calculate" workflow */}
+                        {workflowType === 'calculate' && currentProject.boards.length > 0 && cutPieces.length > 0 && (
+                          <div className="recalculate-section">
+                            <button
+                              onClick={() => {
+                                updateProject({
+                                  ...currentProject,
+                                  boards: [],
+                                  cutPlan: null
+                                })
+                              }}
+                              className="btn-secondary"
+                            >
+                              Clear Boards & Recalculate
+                            </button>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
@@ -1241,22 +1399,44 @@ function App() {
                       </div>
                     )}
 
-                    {cutPieces.length > 0 && currentProject.boards.length > 0 && (
-                      <div className="generate-plan-section">
-                        <button
-                          onClick={handleGenerateCutPlan}
-                          className="btn-primary btn-large"
-                        >
-                          Generate Cut Plan
-                        </button>
-                      </div>
-                    )}
+                    {/* Next step prompts based on workflow */}
+                    {cutPieces.length > 0 && (
+                      <div className="next-step-section">
+                        {workflowType === 'calculate' && currentProject.boards.length === 0 && (
+                          <div className="next-step-prompt">
+                            <p>Cut list ready! Now calculate how much lumber you need.</p>
+                            <button
+                              onClick={() => setActiveTab('stock')}
+                              className="btn-primary btn-large"
+                            >
+                              Continue to Calculate Stock →
+                            </button>
+                          </div>
+                        )}
 
-                    {cutPieces.length > 0 && currentProject.boards.length === 0 && (
-                      <StockCalculator
-                        cutPieces={cutPieces}
-                        onApplyStock={handleApplyCalculatedStock}
-                      />
+                        {workflowType === 'known' && currentProject.boards.length === 0 && (
+                          <div className="workflow-prompt">
+                            <p>You need stock boards to generate a cut plan.</p>
+                            <button
+                              onClick={() => setActiveTab('stock')}
+                              className="btn-primary"
+                            >
+                              Go to Stock Boards
+                            </button>
+                          </div>
+                        )}
+
+                        {currentProject.boards.length > 0 && (
+                          <div className="generate-plan-section">
+                            <button
+                              onClick={handleGenerateCutPlan}
+                              className="btn-primary btn-large"
+                            >
+                              Generate Cut Plan →
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
@@ -1271,13 +1451,49 @@ function App() {
                       />
                     ) : (
                       <div className="no-plan">
+                        <h3>Cut Plan</h3>
                         <p>No cut plan generated yet.</p>
-                        {cutPieces.length === 0 && (
-                          <p>Add cut pieces in the Cut List tab first.</p>
+
+                        {workflowType === 'calculate' ? (
+                          <>
+                            {cutPieces.length === 0 && (
+                              <div className="workflow-prompt">
+                                <p>Start by adding your cut pieces.</p>
+                                <button onClick={() => setActiveTab('cutlist')} className="btn-primary">
+                                  Go to Cut List
+                                </button>
+                              </div>
+                            )}
+                            {cutPieces.length > 0 && currentProject.boards.length === 0 && (
+                              <div className="workflow-prompt">
+                                <p>Next, calculate how much lumber you need.</p>
+                                <button onClick={() => setActiveTab('stock')} className="btn-primary">
+                                  Calculate Stock Needed
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            {currentProject.boards.length === 0 && (
+                              <div className="workflow-prompt">
+                                <p>Start by adding your stock boards.</p>
+                                <button onClick={() => setActiveTab('stock')} className="btn-primary">
+                                  Go to Stock Boards
+                                </button>
+                              </div>
+                            )}
+                            {currentProject.boards.length > 0 && cutPieces.length === 0 && (
+                              <div className="workflow-prompt">
+                                <p>Next, add your cut pieces.</p>
+                                <button onClick={() => setActiveTab('cutlist')} className="btn-primary">
+                                  Go to Cut List
+                                </button>
+                              </div>
+                            )}
+                          </>
                         )}
-                        {cutPieces.length > 0 && currentProject.boards.length === 0 && (
-                          <p>Add stock boards in the Stock Boards tab first.</p>
-                        )}
+
                         {cutPieces.length > 0 && currentProject.boards.length > 0 && (
                           <button
                             onClick={handleGenerateCutPlan}
