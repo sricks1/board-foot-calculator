@@ -744,7 +744,12 @@ function calculateStockForSingleTemplate(cutPieces, stockTemplate, kerf) {
     const cutPlan = optimizeCuts(testBoards, cutPieces, kerf)
 
     if (cutPlan.unplacedPieces.length === 0) {
-      result = { boardsNeeded: mid, boards: testBoards, cutPlan }
+      result = {
+        boardsNeeded: mid,
+        boards: testBoards,
+        cutPlan,
+        boardsByTemplate: [{ template: stockTemplate, count: mid }]
+      }
       high = mid - 1
     } else {
       low = mid + 1
@@ -767,7 +772,12 @@ function calculateStockForSingleTemplate(cutPieces, stockTemplate, kerf) {
       })
     }
     const cutPlan = optimizeCuts(testBoards, cutPieces, kerf)
-    result = { boardsNeeded: high + 1, boards: testBoards, cutPlan }
+    result = {
+      boardsNeeded: high + 1,
+      boards: testBoards,
+      cutPlan,
+      boardsByTemplate: [{ template: stockTemplate, count: high + 1 }]
+    }
   }
 
   return result

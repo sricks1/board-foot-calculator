@@ -40,7 +40,7 @@ export default function Auth() {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h1 className="auth-title">Board Foot Calculator</h1>
+        <img src={`${import.meta.env.BASE_URL}logo.png`} alt="CutSmart by The Joinery" className="auth-logo" />
         <p className="auth-subtitle">
           {isSignUp ? 'Create an account to save your projects' : 'Sign in to access your projects'}
         </p>

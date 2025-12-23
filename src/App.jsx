@@ -4,6 +4,7 @@ import { optimizeCuts, calculateCutPiecesBF, getStockThicknesses, getCutPieceThi
 import { exportProjectToPDF } from './pdfExport'
 import { supabase } from './supabaseClient'
 import Auth from './Auth'
+import { getAvailableSpecies, calculateTotalCost, getPricePerBF } from './lumberPrices'
 
 // Common stock board templates (base dimensions, thickness selected separately)
 const STOCK_TEMPLATES = [
@@ -17,21 +18,59 @@ const STOCK_TEMPLATES = [
 
 const THICKNESS_OPTIONS = ['4/4', '5/4', '6/4', '8/4', '10/4', '12/4', '16/4']
 
+// Species options - includes all priced species from Capital Hardwood
 const SPECIES_OPTIONS = [
+  // Domestic - Common
   'Walnut',
+  'Walnut - Natural',
+  'Walnut - Prime',
   'Cherry',
-  'Maple',
-  'Oak (Red)',
-  'Oak (White)',
-  'Ash',
+  'Cherry - Select',
+  'Maple - Hard',
+  'Maple - Soft',
+  'Maple - Ambrosia',
+  'Maple - Birds Eye',
+  'Maple - Curly',
+  'Oak - Red',
+  'Oak - Red QS',
+  'Oak - Red Rift',
+  'Oak - White',
+  'Oak - White QS',
+  'Oak - White Rift',
+  'Ash - White',
   'Poplar',
-  'Pine',
-  'Cedar',
-  'Mahogany',
-  'Birch',
-  'Hickory',
-  'Alder',
+  'Hickory - Calico',
+  'Hickory - Heart',
+  // Domestic - Other
+  'Alder - Knotty',
+  'Basswood',
   'Beech',
+  'Birch - Yellow',
+  'Butternut',
+  'Catalpa',
+  'Cedar - Aromatic',
+  'Cedar - Western Red',
+  'Douglas Fir',
+  'Sycamore - QS',
+  // Exotic
+  'Beli',
+  'Black Limba',
+  'Bloodwood',
+  'Canarywood',
+  'Ebiara',
+  'Iroko',
+  'Jatoba',
+  'Leopardwood',
+  'Mahogany - African',
+  'Olivewood',
+  'Osage Orange',
+  'Padauk',
+  'Peruvian Walnut',
+  'Purple Heart',
+  'Sapele - QS',
+  'Spanish Cedar',
+  'Wenge',
+  // Other
   'Other'
 ]
 
@@ -353,12 +392,6 @@ function CutPieceForm({ onSubmit, initialData, onCancel, availableThicknesses, a
       <h3>{initialData ? 'Edit Cut Piece' : 'Add Cut Piece'}</h3>
 
       {error && <div className="error">{error}</div>}
-
-      {availableThicknesses.length === 0 && (
-        <div className="warning">
-          Add stock boards first to define available thicknesses
-        </div>
-      )}
 
       <div className="form-group">
         <label htmlFor="cutName">Piece Name</label>
@@ -808,7 +841,9 @@ function StockCalculator({ cutPieces, onApplyStock }) {
                   <span className="breakdown-count">{item.count}×</span>
                   <span className="breakdown-desc">
                     {item.template.name || `${item.template.length}" × ${item.template.width}"`}
-                    <span className="breakdown-thickness"> ({item.template.thickness})</span>
+                    <span className="breakdown-thickness"> ({item.template.thickness}
+                      {item.template.species && ` • ${item.template.species}`})
+                    </span>
                   </span>
                 </div>
               ))}
@@ -948,10 +983,73 @@ function CutPlanBoard({ assignment, scale }) {
 }
 
 // Cut Plan Display Component
-function CutPlanDisplay({ cutPlan, onRegenerate, isRegenerating }) {
+function CutPlanDisplay({ cutPlan, boards, onRegenerate, isRegenerating }) {
+  // State for custom price overrides (keyed by item index)
+  const [customPrices, setCustomPrices] = useState({})
+
   if (!cutPlan) return null
 
   const scale = 3 // pixels per inch
+
+  // Calculate pricing from boards
+  const calculatePricing = () => {
+    if (!boards || boards.length === 0) return null
+
+    // Group boards by species + thickness + dimensions
+    const grouped = {}
+    boards.forEach(board => {
+      const key = `${board.thickness}|${board.species || ''}|${board.length}|${board.width}`
+      if (!grouped[key]) {
+        grouped[key] = {
+          key,
+          thickness: board.thickness,
+          species: board.species,
+          length: board.length,
+          width: board.width,
+          count: 0,
+          totalBF: 0
+        }
+      }
+      grouped[key].count += (board.quantity || 1)
+      grouped[key].totalBF += board.boardFeet * (board.quantity || 1)
+    })
+
+    const items = []
+    let totalCost = 0
+    let hasUnpricedItems = false
+
+    Object.values(grouped).forEach((group, idx) => {
+      const defaultPrice = getPricePerBF(group.species || '', group.thickness)
+      // Use custom price if set, otherwise use default
+      const pricePerBF = customPrices[group.key] !== undefined
+        ? customPrices[group.key]
+        : defaultPrice
+
+      if (pricePerBF !== null && pricePerBF !== '') {
+        const cost = group.totalBF * parseFloat(pricePerBF)
+        totalCost += cost
+        items.push({ ...group, pricePerBF: parseFloat(pricePerBF), defaultPrice, cost, isCustom: customPrices[group.key] !== undefined })
+      } else {
+        hasUnpricedItems = true
+        items.push({ ...group, pricePerBF: null, defaultPrice, cost: null, isCustom: false })
+      }
+    })
+
+    return { items, totalCost, hasUnpricedItems }
+  }
+
+  const handlePriceChange = (key, value) => {
+    if (value === '' || value === null) {
+      // Remove custom price, revert to default
+      const newPrices = { ...customPrices }
+      delete newPrices[key]
+      setCustomPrices(newPrices)
+    } else {
+      setCustomPrices({ ...customPrices, [key]: parseFloat(value) || 0 })
+    }
+  }
+
+  const pricing = calculatePricing()
 
   return (
     <div className="cut-plan-display">
@@ -979,6 +1077,12 @@ function CutPlanDisplay({ cutPlan, onRegenerate, isRegenerating }) {
           <span className="stat-value">{cutPlan.boardsUsed}/{cutPlan.totalStockBoards}</span>
           <span className="stat-label">Boards Used</span>
         </div>
+        {pricing && pricing.totalCost > 0 && (
+          <div className="cut-plan-stat highlight">
+            <span className="stat-value">${pricing.totalCost.toFixed(2)}</span>
+            <span className="stat-label">Est. Cost</span>
+          </div>
+        )}
       </div>
 
       {cutPlan.warnings.length > 0 && (
@@ -997,6 +1101,71 @@ function CutPlanDisplay({ cutPlan, onRegenerate, isRegenerating }) {
 
       {cutPlan.assignments.length === 0 && cutPlan.warnings.length === 0 && (
         <p className="cut-plan-empty">No cuts to display. Add cut pieces and generate a plan.</p>
+      )}
+
+      {/* Pricing Breakdown */}
+      {pricing && pricing.items.length > 0 && (
+        <div className="cut-plan-pricing">
+          <h4>Estimated Material Cost</h4>
+          <table className="pricing-table">
+            <thead>
+              <tr>
+                <th>Qty</th>
+                <th>Board</th>
+                <th>BF</th>
+                <th>$/BF</th>
+                <th>Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pricing.items.map((item, idx) => (
+                <tr key={idx} className={item.isCustom ? 'custom-price' : ''}>
+                  <td className="qty-col">{item.count}×</td>
+                  <td className="desc-col">
+                    {item.length}" × {item.width}"
+                    <span className="breakdown-details">
+                      {item.thickness}
+                      {item.species && ` • ${item.species}`}
+                    </span>
+                  </td>
+                  <td className="bf-col">{item.totalBF.toFixed(1)}</td>
+                  <td className="price-col">
+                    <div className="price-input-wrapper">
+                      <span className="price-symbol">$</span>
+                      <input
+                        type="number"
+                        className="price-input"
+                        value={item.pricePerBF !== null ? item.pricePerBF : ''}
+                        onChange={(e) => handlePriceChange(item.key, e.target.value)}
+                        placeholder={item.defaultPrice !== null ? item.defaultPrice.toFixed(2) : '0.00'}
+                        step="0.01"
+                        min="0"
+                      />
+                    </div>
+                  </td>
+                  <td className="cost-col">
+                    {item.cost !== null ? `$${item.cost.toFixed(2)}` : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="total-row">
+                <td colSpan="4" className="total-label">Estimated Total:</td>
+                <td className="total-cost">
+                  ${pricing.totalCost.toFixed(2)}
+                  {pricing.hasUnpricedItems && '*'}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+          {pricing.hasUnpricedItems && (
+            <p className="pricing-note">* Enter a price to include in total</p>
+          )}
+          <p className="pricing-disclaimer">
+            Default prices are estimates only. Update with your most current prices.
+          </p>
+        </div>
       )}
     </div>
   )
@@ -1976,8 +2145,9 @@ function App() {
       </div>
 
       <header>
-        <h1>Board Foot Calculator</h1>
-        <p className="subtitle">Calculate lumber requirements for your woodworking projects</p>
+        <div className="header-content">
+          <img src={`${import.meta.env.BASE_URL}logo.png`} alt="CutSmart by The Joinery" className="header-logo" />
+        </div>
       </header>
 
       <main>
@@ -2319,6 +2489,7 @@ function App() {
                     {currentProject.cutPlan ? (
                       <CutPlanDisplay
                         cutPlan={currentProject.cutPlan}
+                        boards={currentProject.boards}
                         onRegenerate={handleGenerateCutPlan}
                         isRegenerating={isRegenerating}
                       />

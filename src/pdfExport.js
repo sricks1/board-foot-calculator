@@ -353,7 +353,7 @@ export function exportProjectToPDF(project) {
   doc.setFontSize(8)
   doc.setFont('helvetica', 'normal')
   doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, margin, footerY)
-  doc.text('Board Foot Calculator', pageWidth - margin, footerY, { align: 'right' })
+  doc.text('CutSmart by The Joinery', pageWidth - margin, footerY, { align: 'right' })
 
   // Save the PDF
   const fileName = `${project.name.replace(/[^a-z0-9]/gi, '_')}_cut_plan.pdf`
