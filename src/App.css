@@ -41,11 +41,174 @@ header {
   border: 1px solid var(--sky-blue);
   border-radius: 6px;
   transition: all 0.2s;
+  background: transparent;
+  cursor: pointer;
 }
 
 .help-link:hover {
   background: var(--sky-blue);
   color: var(--deep-navy);
+}
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(10, 17, 42, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 2rem;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 16px;
+  max-width: 800px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  position: relative;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+}
+
+.modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: transparent;
+  border: none;
+  font-size: 2rem;
+  color: var(--charcoal);
+  cursor: pointer;
+  padding: 0.5rem;
+  line-height: 1;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+  z-index: 1;
+}
+
+.modal-close:hover {
+  opacity: 1;
+}
+
+/* Help Modal Specific */
+.help-modal {
+  padding: 2.5rem;
+}
+
+.help-content h2 {
+  margin: 0 0 1.5rem;
+  color: var(--slate-blue);
+  font-weight: 500;
+  font-style: italic;
+  font-size: 1.75rem;
+  padding-right: 2rem;
+}
+
+.help-section {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--sky-blue);
+}
+
+.help-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.help-section h3 {
+  margin: 0 0 1rem;
+  color: var(--slate-blue);
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.help-section h4 {
+  margin: 1rem 0 0.5rem;
+  color: var(--deep-navy);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.help-section p {
+  color: var(--charcoal);
+  margin: 0 0 0.75rem;
+  line-height: 1.6;
+}
+
+.help-section ul,
+.help-section ol {
+  color: var(--charcoal);
+  margin: 0 0 0.75rem;
+  padding-left: 1.5rem;
+  line-height: 1.6;
+}
+
+.help-section li {
+  margin-bottom: 0.5rem;
+}
+
+.help-section ul ul,
+.help-section ol ul {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.help-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 0.9rem;
+}
+
+.help-table th,
+.help-table td {
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  border: 1px solid var(--sky-blue);
+}
+
+.help-table th {
+  background: rgba(175, 207, 228, 0.3);
+  color: var(--slate-blue);
+  font-weight: 600;
+}
+
+.help-table td {
+  color: var(--charcoal);
+}
+
+.help-table tr:nth-child(even) td {
+  background: rgba(175, 207, 228, 0.1);
+}
+
+@media (max-width: 600px) {
+  .modal-overlay {
+    padding: 1rem;
+  }
+
+  .help-modal {
+    padding: 1.5rem;
+  }
+
+  .modal-content {
+    max-height: 90vh;
+  }
+
+  .help-table {
+    font-size: 0.8rem;
+  }
+
+  .help-table th,
+  .help-table td {
+    padding: 0.4rem 0.5rem;
+  }
 }
 
 main {

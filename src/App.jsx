@@ -1337,6 +1337,174 @@ function ProjectForm({ onSubmit }) {
   )
 }
 
+// Help Modal Component
+function HelpModal({ isOpen, onClose }) {
+  if (!isOpen) return null
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content help-modal" onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close" onClick={onClose}>&times;</button>
+        <div className="help-content">
+          <h2>User Manual</h2>
+
+          <section className="help-section">
+            <h3>Getting Started</h3>
+            <ol>
+              <li><strong>Sign up</strong> for an account or <strong>sign in</strong> if you already have one</li>
+              <li>Click <strong>"+ New Project"</strong> to create a project</li>
+              <li>Enter a project name and optional description</li>
+              <li>Choose your workflow:
+                <ul>
+                  <li><strong>Calculate Stock Workflow</strong> (recommended): Start with cut pieces, then calculate what lumber to buy</li>
+                  <li><strong>Manual Stock Entry</strong>: Enter your existing lumber inventory manually</li>
+                </ul>
+              </li>
+            </ol>
+          </section>
+
+          <section className="help-section">
+            <h3>The Three Tabs</h3>
+            <p>Navigate between <strong>Cut List</strong>, <strong>Stock Boards</strong>, and <strong>Cut Plan</strong> tabs at any time.</p>
+          </section>
+
+          <section className="help-section">
+            <h3>Tab 1: Cut List</h3>
+            <p>Define all the pieces you need to cut for your project.</p>
+            <table className="help-table">
+              <thead>
+                <tr><th>Field</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Piece Name</td><td>Descriptive name (e.g., "Table Leg", "Apron")</td></tr>
+                <tr><td>Length</td><td>Final length in inches</td></tr>
+                <tr><td>Width</td><td>Final width in inches</td></tr>
+                <tr><td>Thickness</td><td>Lumber notation: 4/4 (1"), 5/4 (1.25"), 6/4 (1.5"), 8/4 (2"), etc.</td></tr>
+                <tr><td>Species</td><td>Wood type (Walnut, Cherry, Oak, etc.)</td></tr>
+                <tr><td>Quantity</td><td>How many pieces needed</td></tr>
+              </tbody>
+            </table>
+            <p><strong>Tips:</strong></p>
+            <ul>
+              <li>Add all pieces before calculating stock</li>
+              <li>Group similar pieces by species and thickness for efficient cutting</li>
+              <li>The optimizer accounts for 1/8" saw kerf between cuts</li>
+            </ul>
+          </section>
+
+          <section className="help-section">
+            <h3>Tab 2: Stock Boards</h3>
+            <h4>Option A: Calculate Stock Needed (Recommended)</h4>
+            <p>Use the built-in calculator to determine what lumber to purchase:</p>
+            <ol>
+              <li>Select <strong>Thickness</strong> (4/4, 5/4, 6/4, 8/4, etc.)</li>
+              <li>Select <strong>Species</strong> (matches species from your cut list)</li>
+              <li>Choose <strong>Size</strong> (standard sizes like 8ft x 6" or custom dimensions)</li>
+              <li>Click <strong>"+ Add Board Type"</strong></li>
+              <li>Repeat for each thickness/species combination in your cut list</li>
+              <li>Click <strong>"Calculate Stock Needed"</strong></li>
+              <li>Review the shopping list showing quantity needed for each board type</li>
+              <li>Click <strong>"Use These Boards & Generate Cut Plan"</strong> to apply</li>
+            </ol>
+
+            <h4>Option B: Manual Entry</h4>
+            <p>If you already have lumber on hand, enter it manually with board name, length, width, thickness, species, and quantity.</p>
+          </section>
+
+          <section className="help-section">
+            <h3>Tab 3: Cut Plan</h3>
+            <p>Generate and view optimized cutting layouts:</p>
+            <ol>
+              <li>Click <strong>"Generate Cut Plan"</strong> (or use Calculate Stock workflow)</li>
+              <li>View statistics:
+                <ul>
+                  <li><strong>Efficiency</strong>: Percentage of stock used vs. wasted</li>
+                  <li><strong>Waste</strong>: Board feet of material lost</li>
+                  <li><strong>Boards Used</strong>: How many stock boards needed</li>
+                  <li><strong>Est. Cost</strong>: Estimated material cost</li>
+                </ul>
+              </li>
+              <li><strong>Visual diagrams</strong> show exactly where each piece is placed on each board</li>
+              <li><strong>Estimated Material Cost</strong> table shows quantity, dimensions, board feet, and costs</li>
+              <li>Click <strong>"Regenerate Plan"</strong> to recalculate if needed</li>
+            </ol>
+          </section>
+
+          <section className="help-section">
+            <h3>Pricing</h3>
+            <p>The app includes default lumber prices for common species. To use your own prices:</p>
+            <ol>
+              <li>Generate a cut plan</li>
+              <li>Scroll to "Estimated Material Cost"</li>
+              <li>Click any price field and enter your supplier's price per board foot</li>
+              <li>Total cost updates automatically</li>
+            </ol>
+            <p><em>Note: Default prices are estimates only. Update with your most current prices.</em></p>
+          </section>
+
+          <section className="help-section">
+            <h3>Exporting to PDF</h3>
+            <p>Click <strong>"Export to PDF"</strong> to generate a professional document containing:</p>
+            <ul>
+              <li>Project name and date</li>
+              <li>Stock boards table with dimensions and board feet</li>
+              <li>Cut list table with all pieces</li>
+              <li>Visual cut diagrams for each board</li>
+              <li>Efficiency statistics</li>
+            </ul>
+          </section>
+
+          <section className="help-section">
+            <h3>Kerf and Rough Lumber</h3>
+            <p>The optimizer accounts for realistic woodworking conditions:</p>
+            <ul>
+              <li><strong>Saw kerf</strong>: 1/8" (0.125") material loss between each cut</li>
+              <li><strong>Rough lumber edges</strong>: Additional 1/8" on each edge for jointing/straightening</li>
+              <li>A 6" wide piece requires at least 6.25" of rough stock width</li>
+            </ul>
+          </section>
+
+          <section className="help-section">
+            <h3>Formulas</h3>
+            <p><strong>Board Feet</strong> = (Thickness x Width x Length) / 144</p>
+            <table className="help-table">
+              <thead>
+                <tr><th>Notation</th><th>Thickness</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>4/4</td><td>1.00"</td></tr>
+                <tr><td>5/4</td><td>1.25"</td></tr>
+                <tr><td>6/4</td><td>1.50"</td></tr>
+                <tr><td>8/4</td><td>2.00"</td></tr>
+                <tr><td>10/4</td><td>2.50"</td></tr>
+                <tr><td>12/4</td><td>3.00"</td></tr>
+                <tr><td>16/4</td><td>4.00"</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section className="help-section">
+            <h3>Troubleshooting</h3>
+            <table className="help-table">
+              <thead>
+                <tr><th>Issue</th><th>Solution</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>"Still need: 4/4 Walnut" warning</td><td>Add a board type with that thickness and species</td></tr>
+                <tr><td>Low efficiency percentage</td><td>Try different board sizes, or add smaller pieces to use scraps</td></tr>
+                <tr><td>Pieces not fitting</td><td>Ensure stock boards are large enough; check species/thickness match</td></tr>
+                <tr><td>Missing price</td><td>Enter a custom price in the $/BF field</td></tr>
+                <tr><td>Login issues</td><td>Check email confirmation; use "Forgot Password" if needed</td></tr>
+                <tr><td>Sync error</td><td>Check internet connection; data syncs automatically when restored</td></tr>
+              </tbody>
+            </table>
+          </section>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Main App Component
 function App() {
   const [session, setSession] = useState(null)
@@ -1353,6 +1521,7 @@ function App() {
   const [dragOverBoardId, setDragOverBoardId] = useState(null)
   const [draggingCutPieceId, setDraggingCutPieceId] = useState(null)
   const [dragOverCutPieceId, setDragOverCutPieceId] = useState(null)
+  const [showHelp, setShowHelp] = useState(false)
 
   // Check for existing session on mount
   useEffect(() => {
@@ -2147,16 +2316,16 @@ function App() {
       <header>
         <div className="header-content">
           <img src={`${import.meta.env.BASE_URL}logo.png`} alt="CutSmart by The Joinery" className="header-logo" />
-          <a
-            href="https://github.com/sricks1/board-foot-calculator#user-manual"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={() => setShowHelp(true)}
             className="help-link"
           >
             ? Help
-          </a>
+          </button>
         </div>
       </header>
+
+      <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
 
       <main>
         {!currentProject ? (
