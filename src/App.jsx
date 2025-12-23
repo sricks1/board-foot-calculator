@@ -2147,6 +2147,14 @@ function App() {
       <header>
         <div className="header-content">
           <img src={`${import.meta.env.BASE_URL}logo.png`} alt="CutSmart by The Joinery" className="header-logo" />
+          <a
+            href="https://github.com/sricks1/board-foot-calculator#user-manual"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="help-link"
+          >
+            ? Help
+          </a>
         </div>
       </header>
 
