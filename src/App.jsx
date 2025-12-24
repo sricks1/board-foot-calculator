@@ -1731,8 +1731,11 @@ function App() {
           const key = `${board.length}|${board.width}|${board.thickness}|${board.species || ''}`
           if (!seenTemplates.has(key)) {
             seenTemplates.add(key)
+            // Create a clean base name for the template (without board numbers)
+            const lengthFt = board.length >= 12 ? `${Math.round(board.length / 12)}ft` : `${board.length}"`
+            const baseName = `${lengthFt} × ${board.width}"`
             boardTemplates.push({
-              name: board.name,
+              name: baseName,
               length: board.length,
               width: board.width,
               thickness: board.thickness,
