@@ -521,7 +521,7 @@ function getCutPieceSpecies(pieces) {
 }
 
 // Stock Calculator Component - calculates how many boards needed
-function StockCalculator({ cutPieces, onApplyStock }) {
+function StockCalculator({ cutPieces, onApplyStock, projectQuantity = 1 }) {
   // Current selection state for adding a board type
   const [currentThickness, setCurrentThickness] = useState('4/4')
   const [currentSpecies, setCurrentSpecies] = useState('')
@@ -672,6 +672,11 @@ function StockCalculator({ cutPieces, onApplyStock }) {
   return (
     <div className="stock-calculator">
       <h3>Calculate Stock Needed</h3>
+      {projectQuantity > 1 && (
+        <div className="project-quantity-notice">
+          Calculating for <strong>{projectQuantity} items</strong> (quantities multiplied)
+        </div>
+      )}
       <p className="stock-calculator-intro">
         Add board types you can purchase. The calculator will determine how many of each you need.
       </p>
@@ -1177,12 +1182,26 @@ function ProjectSummary({ project }) {
   const totalPieces = project.boards.reduce((sum, board) => sum + (board.quantity || 1), 0)
 
   const cutPieces = project.cutPieces || []
-  const totalCutPieces = cutPieces.reduce((sum, piece) => sum + (piece.quantity || 1), 0)
-  const totalCutBF = calculateCutPiecesBF(cutPieces)
+  const projectQuantity = project.quantity || 1
+  const totalCutPiecesPerItem = cutPieces.reduce((sum, piece) => sum + (piece.quantity || 1), 0)
+  const totalCutPieces = totalCutPiecesPerItem * projectQuantity
+
+  // Calculate BF for multiplied quantities
+  const multipliedCutPieces = projectQuantity > 1
+    ? cutPieces.map(p => ({ ...p, quantity: (p.quantity || 1) * projectQuantity }))
+    : cutPieces
+  const totalCutBF = calculateCutPiecesBF(multipliedCutPieces)
 
   return (
     <div className="project-summary">
       <h3>Project Summary</h3>
+
+      {/* Project Quantity */}
+      {projectQuantity > 1 && (
+        <div className="summary-quantity-badge">
+          Making {projectQuantity} items
+        </div>
+      )}
 
       {/* Stock Summary */}
       <div className="summary-section-label">Stock Boards</div>
@@ -1200,11 +1219,14 @@ function ProjectSummary({ project }) {
       {/* Cut Pieces Summary */}
       {cutPieces.length > 0 && (
         <>
-          <div className="summary-section-label">Cut List</div>
+          <div className="summary-section-label">Cut List {projectQuantity > 1 && '(Total)'}</div>
           <div className="summary-stats">
             <div className="stat">
               <span className="stat-value">{totalCutPieces}</span>
-              <span className="stat-label">Pieces</span>
+              <span className="stat-label">
+                Pieces
+                {projectQuantity > 1 && <span className="stat-per-item">({totalCutPiecesPerItem}/item)</span>}
+              </span>
             </div>
             <div className="stat">
               <span className="stat-value">{totalCutBF.toFixed(1)}</span>
@@ -1259,6 +1281,7 @@ function ProjectSummary({ project }) {
 function ProjectForm({ onSubmit }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [quantity, setQuantity] = useState(1)
   const [workflow, setWorkflow] = useState('calculate') // 'known' or 'calculate'
 
   const handleSubmit = (e) => {
@@ -1269,6 +1292,7 @@ function ProjectForm({ onSubmit }) {
       id: Date.now(),
       name: name.trim(),
       description: description.trim(),
+      quantity: parseInt(quantity) || 1,
       boards: [],
       cutPieces: [],
       cutPlan: null,
@@ -1288,7 +1312,7 @@ function ProjectForm({ onSubmit }) {
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="e.g., Dining Table, Bookshelf"
+          placeholder="e.g., Dining Chair, Bookshelf"
           required
         />
       </div>
@@ -1302,6 +1326,24 @@ function ProjectForm({ onSubmit }) {
           placeholder="Describe your project..."
           rows={3}
         />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="projectQuantity">How many are you making?</label>
+        <div className="quantity-input-row">
+          <input
+            id="projectQuantity"
+            type="number"
+            min="1"
+            max="100"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            className="quantity-input"
+          />
+          <span className="quantity-hint">
+            {quantity > 1 ? `Making ${quantity} identical items` : 'Making 1 item'}
+          </span>
+        </div>
       </div>
 
       <div className="form-group">
@@ -1322,7 +1364,7 @@ function ProjectForm({ onSubmit }) {
             className={`workflow-option ${workflow === 'known' ? 'selected' : ''}`}
             onClick={() => setWorkflow('known')}
           >
-            <div className="workflow-icon">🪵</div>
+            <div className="workflow-icon">��</div>
             <div className="workflow-content">
               <h4>I Have My Lumber</h4>
               <p>Start with lumber you already have, then plan your cuts</p>
@@ -1589,6 +1631,7 @@ function App() {
         name: project.name,
         description: project.description,
         workflow: project.workflow,
+        quantity: project.quantity || 1,
         cutPlan: project.cut_plan,
         createdAt: project.created_at,
         boards: boardsData
@@ -1658,6 +1701,34 @@ function App() {
     }
   }
 
+  // Update project quantity
+  const handleUpdateProjectQuantity = async (newQuantity) => {
+    const qty = parseInt(newQuantity) || 1
+    if (qty < 1) return
+
+    setSyncStatus('syncing')
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({ quantity: qty, cut_plan: null }) // Clear cut plan when quantity changes
+        .eq('id', currentProject.id)
+
+      if (error) throw error
+
+      const updatedProject = {
+        ...currentProject,
+        quantity: qty,
+        cutPlan: null // Clear cut plan when quantity changes
+      }
+      setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+      setCurrentProject(updatedProject)
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error updating project quantity:', error)
+      setSyncStatus('error')
+    }
+  }
+
   const handleCreateProject = async (project) => {
     setSyncStatus('syncing')
     try {
@@ -1667,7 +1738,8 @@ function App() {
           user_id: session.user.id,
           name: project.name,
           description: project.description,
-          workflow: project.workflow
+          workflow: project.workflow,
+          quantity: project.quantity || 1
         })
         .select()
         .single()
@@ -1679,6 +1751,7 @@ function App() {
         name: data.name,
         description: data.description,
         workflow: data.workflow,
+        quantity: data.quantity || 1,
         cutPlan: null,
         createdAt: data.created_at,
         boards: [],
@@ -2174,7 +2247,13 @@ function App() {
     // Small delay to show the loading state (especially for fast calculations)
     await new Promise(resolve => setTimeout(resolve, 100))
 
-    const cutPlan = optimizeCuts(currentProject.boards, cutPieces)
+    // Multiply cut pieces by project quantity
+    const projectQty = currentProject.quantity || 1
+    const multipliedCutPieces = projectQty > 1
+      ? cutPieces.map(p => ({ ...p, quantity: (p.quantity || 1) * projectQty }))
+      : cutPieces
+
+    const cutPlan = optimizeCuts(currentProject.boards, multipliedCutPieces)
 
     // Update local state
     const updatedProject = {
@@ -2283,6 +2362,16 @@ function App() {
     ? [...new Set(currentProject.boards.map(b => b.species).filter(Boolean))]
     : []
   const cutPieces = currentProject?.cutPieces || []
+  const projectQuantity = currentProject?.quantity || 1
+
+  // Multiply cut pieces by project quantity for calculations
+  const getMultipliedCutPieces = () => {
+    if (projectQuantity <= 1) return cutPieces
+    return cutPieces.map(piece => ({
+      ...piece,
+      quantity: (piece.quantity || 1) * projectQuantity
+    }))
+  }
 
   // Show loading spinner while checking auth
   if (loading) {
@@ -2402,6 +2491,20 @@ function App() {
                   <p className="project-description">{currentProject.description}</p>
                 )}
               </div>
+              <div className="project-quantity-selector">
+                <label>Making:</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={currentProject.quantity || 1}
+                  onChange={(e) => handleUpdateProjectQuantity(e.target.value)}
+                  className="project-quantity-input"
+                />
+                <span className="project-quantity-label">
+                  {(currentProject.quantity || 1) === 1 ? 'item' : 'items'}
+                </span>
+              </div>
             </div>
 
             {/* Workflow Indicator */}
@@ -2474,8 +2577,9 @@ function App() {
                     {/* For "calculate" workflow, show calculator if no boards yet */}
                     {workflowType === 'calculate' && currentProject.boards.length === 0 && cutPieces.length > 0 ? (
                       <StockCalculator
-                        cutPieces={cutPieces}
+                        cutPieces={getMultipliedCutPieces()}
                         onApplyStock={handleApplyCalculatedStock}
+                        projectQuantity={projectQuantity}
                       />
                     ) : workflowType === 'calculate' && currentProject.boards.length === 0 && cutPieces.length === 0 ? (
                       <div className="workflow-prompt">
