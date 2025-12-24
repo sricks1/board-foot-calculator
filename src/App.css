@@ -2186,3 +2186,165 @@ button:disabled {
   opacity: 0.8;
   margin-top: 0.15rem;
 }
+
+/* Purchase Order Modal */
+.purchase-order-modal {
+  max-width: 600px;
+}
+
+.purchase-order {
+  padding: 2rem;
+}
+
+.po-header {
+  border-bottom: 2px solid var(--slate-blue);
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.po-header h2 {
+  margin: 0 0 1rem;
+  color: var(--slate-blue);
+  font-weight: 500;
+  font-style: italic;
+}
+
+.po-meta p {
+  margin: 0.25rem 0;
+  color: var(--charcoal);
+  font-size: 0.95rem;
+}
+
+.po-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.5rem;
+}
+
+.po-table th {
+  background: var(--slate-blue);
+  color: white;
+  padding: 0.75rem;
+  text-align: left;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.po-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--sky-blue);
+  font-size: 0.95rem;
+}
+
+.po-table tbody tr:nth-child(even) {
+  background: rgba(175, 207, 228, 0.1);
+}
+
+.po-qty {
+  text-align: center;
+  font-weight: 600;
+  color: var(--craftsman-orange);
+  width: 50px;
+}
+
+.po-species {
+  font-weight: 500;
+  color: var(--deep-navy);
+}
+
+.po-dims {
+  color: var(--charcoal);
+}
+
+.po-bf {
+  text-align: right;
+  font-weight: 500;
+}
+
+.po-total-row td {
+  border-top: 2px solid var(--slate-blue);
+  border-bottom: none;
+  background: rgba(50, 65, 104, 0.05);
+}
+
+.po-notes {
+  background: rgba(175, 207, 228, 0.15);
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.po-notes p {
+  margin: 0;
+  color: var(--charcoal);
+  font-size: 0.9rem;
+}
+
+.po-footer {
+  text-align: center;
+  padding-top: 1rem;
+  border-top: 1px solid var(--sky-blue);
+}
+
+.po-footer p {
+  margin: 0;
+  color: var(--charcoal);
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.po-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  padding: 1rem 2rem 2rem;
+  border-top: 1px solid var(--sky-blue);
+}
+
+/* Print styles for Purchase Order */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .purchase-order-modal,
+  .purchase-order-modal * {
+    visibility: visible;
+  }
+
+  .purchase-order-modal {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    box-shadow: none;
+    border-radius: 0;
+  }
+
+  .modal-overlay {
+    position: absolute;
+    background: white;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .purchase-order {
+    padding: 0;
+  }
+
+  .po-table th {
+    background: #324168 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .po-table tbody tr:nth-child(even) {
+    background: #f5f5f5 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
