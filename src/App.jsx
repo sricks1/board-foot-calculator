@@ -1701,24 +1701,117 @@ function App() {
     }
   }
 
-  // Update project quantity
+  // Update project quantity and recalculate stock/cut plan
   const handleUpdateProjectQuantity = async (newQuantity) => {
     const qty = parseInt(newQuantity) || 1
-    if (qty < 1) return
+    if (qty < 1 || qty === currentProject.quantity) return
 
     setSyncStatus('syncing')
+    setIsRegenerating(true)
+
     try {
-      const { error } = await supabase
+      const cutPiecesList = currentProject.cutPieces || []
+      const existingBoards = currentProject.boards || []
+
+      // Multiply cut pieces by new quantity
+      const multipliedCutPieces = cutPiecesList.map(p => ({
+        ...p,
+        quantity: (p.quantity || 1) * qty
+      }))
+
+      let newBoards = existingBoards
+      let newCutPlan = null
+
+      // If we have boards and cut pieces, recalculate how many boards are needed
+      if (existingBoards.length > 0 && cutPiecesList.length > 0) {
+        // Get unique board templates (group by dimensions/thickness/species)
+        const boardTemplates = []
+        const seenTemplates = new Set()
+        existingBoards.forEach(board => {
+          const key = `${board.length}|${board.width}|${board.thickness}|${board.species || ''}`
+          if (!seenTemplates.has(key)) {
+            seenTemplates.add(key)
+            boardTemplates.push({
+              name: board.name,
+              length: board.length,
+              width: board.width,
+              thickness: board.thickness,
+              species: board.species
+            })
+          }
+        })
+
+        // Recalculate stock needed with multiplied cut pieces
+        const result = calculateStockNeeded(multipliedCutPieces, boardTemplates)
+
+        if (result && result.boards) {
+          newBoards = result.boards.map((board, idx) => ({
+            ...board,
+            id: existingBoards[idx]?.id || Date.now() + idx
+          }))
+          newCutPlan = result.cutPlan
+        }
+      } else if (existingBoards.length > 0 && cutPiecesList.length === 0) {
+        // Just update quantity, keep boards as-is
+        newCutPlan = null
+      }
+
+      // Update database
+      // First delete old boards
+      await supabase
+        .from('boards')
+        .delete()
+        .eq('project_id', currentProject.id)
+
+      // Insert new boards if any
+      if (newBoards.length > 0) {
+        const boardsToInsert = newBoards.map(board => ({
+          project_id: currentProject.id,
+          name: board.name,
+          length: board.length,
+          width: board.width,
+          thickness: board.thickness,
+          thickness_inches: board.thicknessInches || parseThickness(board.thickness) || 1,
+          species: board.species,
+          quantity: board.quantity || 1,
+          board_feet_per_piece: board.boardFeetPerPiece || board.boardFeet,
+          board_feet: board.boardFeet
+        }))
+
+        const { data: insertedBoards, error: boardsError } = await supabase
+          .from('boards')
+          .insert(boardsToInsert)
+          .select()
+
+        if (boardsError) throw boardsError
+
+        newBoards = insertedBoards.map(b => ({
+          id: b.id,
+          name: b.name,
+          length: Number(b.length),
+          width: Number(b.width),
+          thickness: b.thickness,
+          thicknessInches: Number(b.thickness_inches),
+          species: b.species,
+          quantity: b.quantity,
+          boardFeetPerPiece: Number(b.board_feet_per_piece),
+          boardFeet: Number(b.board_feet)
+        }))
+      }
+
+      // Update project
+      const { error: projectError } = await supabase
         .from('projects')
-        .update({ quantity: qty, cut_plan: null }) // Clear cut plan when quantity changes
+        .update({ quantity: qty, cut_plan: newCutPlan })
         .eq('id', currentProject.id)
 
-      if (error) throw error
+      if (projectError) throw projectError
 
       const updatedProject = {
         ...currentProject,
         quantity: qty,
-        cutPlan: null // Clear cut plan when quantity changes
+        boards: newBoards,
+        cutPlan: newCutPlan
       }
       setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
       setCurrentProject(updatedProject)
@@ -1726,6 +1819,8 @@ function App() {
     } catch (error) {
       console.error('Error updating project quantity:', error)
       setSyncStatus('error')
+    } finally {
+      setIsRegenerating(false)
     }
   }
 
