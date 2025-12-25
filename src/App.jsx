@@ -1486,7 +1486,7 @@ function HelpModal({ isOpen, onClose }) {
 
           <section className="help-section">
             <h3>Exporting to PDF</h3>
-            <p>Click <strong>"Export to PDF"</strong> to generate a professional document containing:</p>
+            <p>Click <strong>"Export Project to PDF"</strong> to generate a professional document containing:</p>
             <ul>
               <li>Project name and date</li>
               <li>Stock boards table with dimensions and board feet</li>
@@ -1494,6 +1494,49 @@ function HelpModal({ isOpen, onClose }) {
               <li>Visual cut diagrams for each board</li>
               <li>Efficiency statistics</li>
             </ul>
+          </section>
+
+          <section className="help-section">
+            <h3>Project Quantity (Building Multiples)</h3>
+            <p>Making multiple identical items? Use the quantity feature to automatically calculate total materials:</p>
+            <ol>
+              <li>Create your project with the cut list for <strong>one item</strong></li>
+              <li>Find the <strong>"Building X"</strong> selector in the project header</li>
+              <li>Enter how many you're making (e.g., 4 chairs)</li>
+              <li>Stock boards are automatically recalculated to match</li>
+              <li>Cut plan regenerates with the correct quantities</li>
+            </ol>
+            <p><strong>Note:</strong> The stock board dimensions stay the same - only the quantities increase to accommodate the additional pieces.</p>
+          </section>
+
+          <section className="help-section">
+            <h3>Purchase Orders</h3>
+            <p>Generate a printable shopping list for the lumber yard:</p>
+            <ol>
+              <li>Set up your project with stock boards</li>
+              <li>Click the <strong>"Purchase Order"</strong> button</li>
+              <li>Review your lumber shopping list grouped by species, thickness, and dimensions</li>
+              <li>Click <strong>"Print / Save as PDF"</strong> to print or save</li>
+            </ol>
+            <p>The purchase order includes:</p>
+            <ul>
+              <li>Your contact information (set in Settings)</li>
+              <li>Project name and date</li>
+              <li>Quantity, species, dimensions, and board feet for each board type</li>
+              <li>Total piece count and board feet</li>
+            </ul>
+          </section>
+
+          <section className="help-section">
+            <h3>Settings</h3>
+            <p>Click <strong>"Settings"</strong> in the header to configure your profile:</p>
+            <ul>
+              <li><strong>Name / Company</strong>: Your name or business name</li>
+              <li><strong>Address</strong>: Street address, city, state, zip</li>
+              <li><strong>Phone</strong>: Contact phone number</li>
+              <li><strong>Email</strong>: Contact email address</li>
+            </ul>
+            <p>This information appears on your purchase orders and syncs with your account across all devices.</p>
           </section>
 
           <section className="help-section">
@@ -1547,8 +1590,103 @@ function HelpModal({ isOpen, onClose }) {
   )
 }
 
+// Settings Modal Component
+function SettingsModal({ isOpen, onClose, userProfile, onSave }) {
+  const [profile, setProfile] = useState(userProfile)
+
+  useEffect(() => {
+    setProfile(userProfile)
+  }, [userProfile, isOpen])
+
+  if (!isOpen) return null
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    onSave(profile)
+    onClose()
+  }
+
+  const handleChange = (field, value) => {
+    setProfile(prev => ({ ...prev, [field]: value }))
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content settings-modal" onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close" onClick={onClose}>&times;</button>
+
+        <div className="settings-content">
+          <h2>Settings</h2>
+
+          <form onSubmit={handleSubmit}>
+            <div className="settings-section">
+              <h3>Contact Information</h3>
+              <p className="settings-description">
+                This information will appear on your purchase orders.
+              </p>
+
+              <div className="form-group">
+                <label htmlFor="profile-name">Name / Company</label>
+                <input
+                  type="text"
+                  id="profile-name"
+                  value={profile.name}
+                  onChange={(e) => handleChange('name', e.target.value)}
+                  placeholder="Your name or company name"
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="profile-address">Address</label>
+                <textarea
+                  id="profile-address"
+                  value={profile.address}
+                  onChange={(e) => handleChange('address', e.target.value)}
+                  placeholder="Street address, city, state, zip"
+                  rows={3}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="profile-phone">Phone</label>
+                <input
+                  type="tel"
+                  id="profile-phone"
+                  value={profile.phone}
+                  onChange={(e) => handleChange('phone', e.target.value)}
+                  placeholder="(555) 123-4567"
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="profile-email">Email</label>
+                <input
+                  type="email"
+                  id="profile-email"
+                  value={profile.email}
+                  onChange={(e) => handleChange('email', e.target.value)}
+                  placeholder="you@example.com"
+                />
+              </div>
+            </div>
+
+            <div className="settings-actions">
+              <button type="submit" className="btn-primary">
+                Save Settings
+              </button>
+              <button type="button" onClick={onClose} className="btn-secondary">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Purchase Order Modal Component
-function PurchaseOrderModal({ isOpen, onClose, project, boards }) {
+function PurchaseOrderModal({ isOpen, onClose, project, boards, userProfile }) {
   if (!isOpen || !project) return null
 
   // Group boards by species + thickness + dimensions
@@ -1604,11 +1742,27 @@ function PurchaseOrderModal({ isOpen, onClose, project, boards }) {
 
         <div className="purchase-order">
           <div className="po-header">
-            <h2>Lumber Purchase Order</h2>
-            <div className="po-meta">
-              <p><strong>Project:</strong> {project.name}</p>
-              {project.quantity > 1 && <p><strong>Quantity:</strong> {project.quantity} items</p>}
-              <p><strong>Date:</strong> {today}</p>
+            <div className="po-header-row">
+              <div className="po-title-section">
+                <h2>Lumber Purchase Order</h2>
+                <div className="po-meta">
+                  <p><strong>Project:</strong> {project.name}</p>
+                  {project.quantity > 1 && <p><strong>Quantity:</strong> {project.quantity} items</p>}
+                  <p><strong>Date:</strong> {today}</p>
+                </div>
+              </div>
+              {(userProfile?.name || userProfile?.address || userProfile?.phone || userProfile?.email) ? (
+                <div className="po-customer-info">
+                  {userProfile.name && <p className="po-customer-name">{userProfile.name}</p>}
+                  {userProfile.address && <p className="po-customer-address">{userProfile.address}</p>}
+                  {userProfile.phone && <p>{userProfile.phone}</p>}
+                  {userProfile.email && <p>{userProfile.email}</p>}
+                </div>
+              ) : (
+                <div className="po-customer-info po-customer-hint no-print">
+                  <p className="po-hint-text">Add your contact info in Settings</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1682,6 +1836,13 @@ function App() {
   const [dragOverCutPieceId, setDragOverCutPieceId] = useState(null)
   const [showHelp, setShowHelp] = useState(false)
   const [showPurchaseOrder, setShowPurchaseOrder] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [userProfile, setUserProfile] = useState({
+    name: '',
+    address: '',
+    phone: '',
+    email: ''
+  })
 
   // Check for existing session on mount
   useEffect(() => {
@@ -1697,14 +1858,71 @@ function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Load projects from Supabase when user logs in
+  // Load projects and profile from Supabase when user logs in
   useEffect(() => {
     if (session) {
       loadProjects()
+      loadUserProfile()
     } else {
       setProjects([])
+      setUserProfile({ name: '', address: '', phone: '', email: '' })
     }
   }, [session])
+
+  // Load user profile from Supabase
+  const loadUserProfile = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('name, address, phone, email')
+        .single()
+
+      if (error && error.code !== 'PGRST116') {
+        // PGRST116 = no rows returned, which is fine for new users
+        console.error('Failed to load profile:', error)
+        return
+      }
+
+      if (data) {
+        setUserProfile({
+          name: data.name || '',
+          address: data.address || '',
+          phone: data.phone || '',
+          email: data.email || ''
+        })
+      }
+    } catch (e) {
+      console.error('Failed to load profile:', e)
+    }
+  }
+
+  // Save user profile to Supabase
+  const handleUpdateProfile = async (newProfile) => {
+    setUserProfile(newProfile)
+
+    if (!session) return
+
+    try {
+      const { error } = await supabase
+        .from('user_profiles')
+        .upsert({
+          user_id: session.user.id,
+          name: newProfile.name,
+          address: newProfile.address,
+          phone: newProfile.phone,
+          email: newProfile.email,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id'
+        })
+
+      if (error) {
+        console.error('Failed to save profile:', error)
+      }
+    } catch (e) {
+      console.error('Failed to save profile:', e)
+    }
+  }
 
   // Load all projects for the current user
   const loadProjects = async () => {
@@ -2621,21 +2839,36 @@ function App() {
       <header>
         <div className="header-content">
           <img src={`${import.meta.env.BASE_URL}logo.png`} alt="CutSmart by The Joinery" className="header-logo" />
-          <button
-            onClick={() => setShowHelp(true)}
-            className="help-link"
-          >
-            ? Help
-          </button>
+          <div className="header-buttons">
+            <button
+              onClick={() => setShowSettings(true)}
+              className="settings-link"
+            >
+              ⚙ Settings
+            </button>
+            <button
+              onClick={() => setShowHelp(true)}
+              className="help-link"
+            >
+              ? Help
+            </button>
+          </div>
         </div>
       </header>
 
       <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        userProfile={userProfile}
+        onSave={handleUpdateProfile}
+      />
       <PurchaseOrderModal
         isOpen={showPurchaseOrder}
         onClose={() => setShowPurchaseOrder(false)}
         project={currentProject}
         boards={currentProject?.boards || []}
+        userProfile={userProfile}
       />
 
       <main>
@@ -2704,7 +2937,7 @@ function App() {
                   onClick={() => exportProjectToPDF(currentProject)}
                   className="btn-export"
                 >
-                  Export to PDF
+                  Export Project to PDF
                 </button>
                 {currentProject.boards.length > 0 && (
                   <button

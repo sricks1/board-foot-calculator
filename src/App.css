@@ -29,11 +29,17 @@ header {
   width: auto;
 }
 
-.help-link {
+.header-buttons {
   position: absolute;
   right: 0;
   top: 50%;
   transform: translateY(-50%);
+  display: flex;
+  gap: 0.5rem;
+}
+
+.help-link,
+.settings-link {
   color: var(--slate-blue);
   text-decoration: none;
   font-size: 0.9rem;
@@ -45,7 +51,8 @@ header {
   cursor: pointer;
 }
 
-.help-link:hover {
+.help-link:hover,
+.settings-link:hover {
   background: var(--sky-blue);
   color: var(--deep-navy);
 }
@@ -209,6 +216,92 @@ header {
   .help-table td {
     padding: 0.4rem 0.5rem;
   }
+
+  .header-buttons {
+    position: static;
+    transform: none;
+    margin-top: 1rem;
+    justify-content: center;
+  }
+}
+
+/* Settings Modal */
+.settings-modal {
+  max-width: 500px;
+}
+
+.settings-content {
+  padding: 2rem;
+}
+
+.settings-content h2 {
+  margin: 0 0 1.5rem;
+  color: var(--slate-blue);
+  font-weight: 500;
+  font-style: italic;
+  font-size: 1.75rem;
+  padding-right: 2rem;
+}
+
+.settings-section {
+  margin-bottom: 1.5rem;
+}
+
+.settings-section h3 {
+  margin: 0 0 0.5rem;
+  color: var(--slate-blue);
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.settings-description {
+  color: var(--charcoal);
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+  opacity: 0.8;
+}
+
+.settings-content .form-group {
+  margin-bottom: 1rem;
+}
+
+.settings-content .form-group label {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--slate-blue);
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.settings-content .form-group input,
+.settings-content .form-group textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 2px solid var(--sky-blue);
+  border-radius: 6px;
+  font-size: 1rem;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.settings-content .form-group input:focus,
+.settings-content .form-group textarea:focus {
+  outline: none;
+  border-color: var(--craftsman-orange);
+}
+
+.settings-content .form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--sky-blue);
 }
 
 main {
@@ -2202,6 +2295,17 @@ button:disabled {
   margin-bottom: 1.5rem;
 }
 
+.po-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 2rem;
+}
+
+.po-title-section {
+  flex: 1;
+}
+
 .po-header h2 {
   margin: 0 0 1rem;
   color: var(--slate-blue);
@@ -2213,6 +2317,40 @@ button:disabled {
   margin: 0.25rem 0;
   color: var(--charcoal);
   font-size: 0.95rem;
+}
+
+.po-customer-info {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.po-customer-info p {
+  margin: 0.15rem 0;
+  color: var(--charcoal);
+  font-size: 0.9rem;
+}
+
+.po-customer-name {
+  font-weight: 600;
+  color: var(--deep-navy) !important;
+  font-size: 1rem !important;
+}
+
+.po-customer-address {
+  white-space: pre-line;
+}
+
+.po-customer-hint {
+  background: rgba(175, 207, 228, 0.2);
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  border: 1px dashed var(--sky-blue);
+}
+
+.po-hint-text {
+  color: var(--slate-blue) !important;
+  font-style: italic;
+  font-size: 0.85rem !important;
 }
 
 .po-table {

@@ -20,6 +20,9 @@ export default function Auth() {
         const { error } = await supabase.auth.signUp({
           email,
           password,
+          options: {
+            emailRedirectTo: 'https://sricks1.github.io/board-foot-calculator/'
+          }
         })
         if (error) throw error
         setMessage('Check your email for a confirmation link!')
