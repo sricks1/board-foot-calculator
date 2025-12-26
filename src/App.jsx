@@ -1,10 +1,155 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import './App.css'
 import { optimizeCuts, calculateCutPiecesBF, getStockThicknesses, getCutPieceThicknesses, calculateStockNeeded } from './cutOptimizer'
 import { exportProjectToPDF } from './pdfExport'
 import { supabase } from './supabaseClient'
 import Auth from './Auth'
 import { getAvailableSpecies, calculateTotalCost, getPricePerBF } from './lumberPrices'
+
+// Dropdown Menu Component
+function Dropdown({ label, icon, items, className = '' }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const dropdownRef = useRef(null)
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false)
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isOpen])
+
+  return (
+    <div className={`dropdown ${className}`} ref={dropdownRef}>
+      <button
+        className={`dropdown-toggle ${isOpen ? 'open' : ''}`}
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        {icon && <span className="dropdown-icon">{icon}</span>}
+        {label && <span>{label}</span>}
+        <span className="dropdown-arrow">▼</span>
+      </button>
+      <div className={`dropdown-menu ${isOpen ? 'open' : ''}`}>
+        {items.map((item, index) => (
+          item.divider ? (
+            <div key={index} className="dropdown-divider" />
+          ) : (
+            <button
+              key={index}
+              className="dropdown-menu-item"
+              onClick={() => {
+                item.onClick()
+                setIsOpen(false)
+              }}
+            >
+              {item.icon && <span className="dropdown-menu-item-icon">{item.icon}</span>}
+              <span>{item.label}</span>
+            </button>
+          )
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Confirmation Dialog Component
+function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel, confirmText = 'Delete', confirmStyle = 'danger' }) {
+  if (!isOpen) return null
+
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal-content confirm-dialog" onClick={(e) => e.stopPropagation()}>
+        <h3>{title}</h3>
+        <p>{message}</p>
+        <div className="confirm-dialog-actions">
+          <button onClick={onCancel} className="btn-secondary">Cancel</button>
+          <button onClick={onConfirm} className={confirmStyle === 'danger' ? 'btn-delete' : 'btn-primary'}>
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Species color mapping for visual grouping
+const SPECIES_COLORS = {
+  // Domestic - Common (warm browns and tans)
+  'Walnut': '#5D4037',
+  'Walnut - Natural': '#6D4C41',
+  'Walnut - Prime': '#4E342E',
+  'Cherry': '#C62828',
+  'Cherry - Select': '#D32F2F',
+  'Maple - Hard': '#FFCC80',
+  'Maple - Soft': '#FFE0B2',
+  'Maple - Ambrosia': '#FFAB91',
+  'Maple - Birds Eye': '#FFF3E0',
+  'Maple - Curly': '#FFE082',
+  'Oak - Red': '#BF360C',
+  'Oak - Red QS': '#E64A19',
+  'Oak - Red Rift': '#FF5722',
+  'Oak - White': '#D7CCC8',
+  'Oak - White QS': '#EFEBE9',
+  'Oak - White Rift': '#FBE9E7',
+  'Ash - White': '#F5F5F5',
+  'Poplar': '#C5E1A5',
+  'Hickory - Calico': '#BCAAA4',
+  'Hickory - Heart': '#A1887F',
+  // Domestic - Other
+  'Alder - Knotty': '#FFAB91',
+  'Basswood': '#FFF8E1',
+  'Beech': '#FFE4C4',
+  'Birch - Yellow': '#FFF59D',
+  'Butternut': '#D4A574',
+  'Catalpa': '#E6DDD1',
+  'Cedar - Aromatic': '#D4A190',
+  'Cedar - Western Red': '#CD7F32',
+  'Douglas Fir': '#DEB887',
+  'Sycamore - QS': '#F0EAD6',
+  // Exotic (vibrant colors)
+  'Beli': '#8D6E63',
+  'Black Limba': '#3E2723',
+  'Bloodwood': '#8B0000',
+  'Canarywood': '#FFD54F',
+  'Ebiara': '#795548',
+  'Iroko': '#A67C52',
+  'Jatoba': '#8B4513',
+  'Leopardwood': '#CD853F',
+  'Mahogany - African': '#C04000',
+  'Olivewood': '#808000',
+  'Osage Orange': '#FF8C00',
+  'Padauk': '#FF4500',
+  'Peruvian Walnut': '#654321',
+  'Purple Heart': '#9932CC',
+  'Sapele - QS': '#A0522D',
+  'Spanish Cedar': '#D2691E',
+  'Wenge': '#1C1C1C',
+  // Default
+  'Other': '#9E9E9E'
+}
+
+// Get color for a species (with fallback)
+function getSpeciesColor(species) {
+  return SPECIES_COLORS[species] || SPECIES_COLORS['Other']
+}
+
+// Get contrasting text color (white or black) based on background
+function getContrastColor(hexColor) {
+  const r = parseInt(hexColor.slice(1, 3), 16)
+  const g = parseInt(hexColor.slice(3, 5), 16)
+  const b = parseInt(hexColor.slice(5, 7), 16)
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return luminance > 0.5 ? '#000000' : '#FFFFFF'
+}
 
 // Common stock board templates (base dimensions, thickness selected separately)
 const STOCK_TEMPLATES = [
@@ -895,11 +1040,19 @@ function CutPlanBoard({ assignment, scale }) {
   const boardWidth = assignment.width * scale
   const boardLength = assignment.length * scale
 
-  // Generate colors for cuts
-  const colors = [
+  // Fallback colors for pieces without species
+  const fallbackColors = [
     '#E06829', '#324168', '#AFCFE4', '#8B5A2B', '#6B8E23',
     '#CD853F', '#4682B4', '#D2691E', '#708090', '#BC8F8F'
   ]
+
+  // Get color for a cut piece - use species color if available, otherwise fallback
+  const getCutColor = (cut, idx) => {
+    if (cut.species && SPECIES_COLORS[cut.species]) {
+      return getSpeciesColor(cut.species)
+    }
+    return fallbackColors[idx % fallbackColors.length]
+  }
 
   return (
     <div className="cut-plan-board">
@@ -909,6 +1062,15 @@ function CutPlanBoard({ assignment, scale }) {
         <span className="cut-plan-board-dims">
           {assignment.length}" × {assignment.width}" × {assignment.thickness}
         </span>
+        {assignment.species && (
+          <span className="cut-plan-board-species">
+            <span
+              className="species-color-dot"
+              style={{ backgroundColor: getSpeciesColor(assignment.species) }}
+            />
+            {assignment.species}
+          </span>
+        )}
       </div>
       <svg
         width={boardLength + 2}
@@ -927,32 +1089,36 @@ function CutPlanBoard({ assignment, scale }) {
         />
 
         {/* Cut pieces */}
-        {assignment.cuts.map((cut, idx) => (
-          <g key={idx}>
-            <rect
-              x={1 + cut.x * scale}
-              y={1 + cut.y * scale}
-              width={cut.length * scale}
-              height={cut.width * scale}
-              fill={colors[idx % colors.length]}
-              stroke="#0A112A"
-              strokeWidth={1}
-              opacity={0.85}
-            />
-            <text
-              x={1 + cut.x * scale + (cut.length * scale) / 2}
-              y={1 + cut.y * scale + (cut.width * scale) / 2}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fill="white"
-              fontSize={Math.min(12, Math.min(cut.length, cut.width) * scale * 0.4)}
-              fontWeight="500"
-            >
-              {cut.cutPieceName}
-              {cut.cutPieceIndex > 0 && ` #${cut.cutPieceIndex + 1}`}
-            </text>
-          </g>
-        ))}
+        {assignment.cuts.map((cut, idx) => {
+          const cutColor = getCutColor(cut, idx)
+          const textColor = getContrastColor(cutColor)
+          return (
+            <g key={idx}>
+              <rect
+                x={1 + cut.x * scale}
+                y={1 + cut.y * scale}
+                width={cut.length * scale}
+                height={cut.width * scale}
+                fill={cutColor}
+                stroke="#0A112A"
+                strokeWidth={1}
+                opacity={0.9}
+              />
+              <text
+                x={1 + cut.x * scale + (cut.length * scale) / 2}
+                y={1 + cut.y * scale + (cut.width * scale) / 2}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill={textColor}
+                fontSize={Math.min(12, Math.min(cut.length, cut.width) * scale * 0.4)}
+                fontWeight="500"
+              >
+                {cut.cutPieceName}
+                {cut.cutPieceIndex > 0 && ` #${cut.cutPieceIndex + 1}`}
+              </text>
+            </g>
+          )
+        })}
       </svg>
 
       {/* Cut dimensions list */}
@@ -971,7 +1137,7 @@ function CutPlanBoard({ assignment, scale }) {
                 <td>
                   <span
                     className="cut-color-indicator"
-                    style={{ backgroundColor: colors[idx % colors.length] }}
+                    style={{ backgroundColor: getCutColor(cut, idx) }}
                   ></span>
                   {cut.cutPieceName}
                   {cut.cutPieceIndex > 0 && ` #${cut.cutPieceIndex + 1}`}
@@ -988,7 +1154,7 @@ function CutPlanBoard({ assignment, scale }) {
 }
 
 // Cut Plan Display Component
-function CutPlanDisplay({ cutPlan, boards, onRegenerate, isRegenerating }) {
+function CutPlanDisplay({ cutPlan, boards, onRegenerate, isRegenerating, workflowType }) {
   // State for custom price overrides (keyed by item index)
   const [customPrices, setCustomPrices] = useState({})
 
@@ -996,13 +1162,49 @@ function CutPlanDisplay({ cutPlan, boards, onRegenerate, isRegenerating }) {
 
   const scale = 3 // pixels per inch
 
+  // For "known" workflow, only price boards that were actually used
+  const isKnownWorkflow = workflowType === 'known'
+
+  // Get count of how many instances of each board were used
+  const getUsedBoardCounts = () => {
+    if (!cutPlan.assignments) return {}
+    const usedCounts = {}
+    cutPlan.assignments.forEach(assignment => {
+      // The assignment contains stockBoardId which is the original board ID
+      if (assignment.stockBoardId) {
+        usedCounts[assignment.stockBoardId] = (usedCounts[assignment.stockBoardId] || 0) + 1
+      }
+    })
+    return usedCounts
+  }
+
   // Calculate pricing from boards
   const calculatePricing = () => {
     if (!boards || boards.length === 0) return null
 
+    const usedBoardCounts = isKnownWorkflow ? getUsedBoardCounts() : null
+
     // Group boards by species + thickness + dimensions
     const grouped = {}
+    let totalBoardCount = 0
+    let usedBoardCount = 0
+
     boards.forEach(board => {
+      const qty = board.quantity || 1
+      totalBoardCount += qty
+
+      // For known workflow, only count boards that were used
+      let qtyToPrice = qty
+      if (isKnownWorkflow && usedBoardCounts) {
+        qtyToPrice = usedBoardCounts[board.id] || 0
+        if (qtyToPrice === 0) return // Skip if none used
+      }
+
+      usedBoardCount += qtyToPrice
+
+      // Calculate board feet per piece (before quantity)
+      const bfPerPiece = board.boardFeet / qty
+
       const key = `${board.thickness}|${board.species || ''}|${board.length}|${board.width}`
       if (!grouped[key]) {
         grouped[key] = {
@@ -1015,8 +1217,8 @@ function CutPlanDisplay({ cutPlan, boards, onRegenerate, isRegenerating }) {
           totalBF: 0
         }
       }
-      grouped[key].count += (board.quantity || 1)
-      grouped[key].totalBF += board.boardFeet * (board.quantity || 1)
+      grouped[key].count += qtyToPrice
+      grouped[key].totalBF += bfPerPiece * qtyToPrice
     })
 
     const items = []
@@ -1040,7 +1242,14 @@ function CutPlanDisplay({ cutPlan, boards, onRegenerate, isRegenerating }) {
       }
     })
 
-    return { items, totalCost, hasUnpricedItems }
+    return {
+      items,
+      totalCost,
+      hasUnpricedItems,
+      isUsedOnly: isKnownWorkflow,
+      boardsUsed: cutPlan.boardsUsed,
+      totalBoards: cutPlan.totalStockBoards
+    }
   }
 
   const handlePriceChange = (key, value) => {
@@ -1070,11 +1279,11 @@ function CutPlanDisplay({ cutPlan, boards, onRegenerate, isRegenerating }) {
       </div>
 
       <div className="cut-plan-stats">
-        <div className="cut-plan-stat">
+        <div className={`cut-plan-stat ${cutPlan.efficiency >= 80 ? 'stat-good' : cutPlan.efficiency >= 60 ? 'stat-moderate' : 'stat-poor'}`}>
           <span className="stat-value">{cutPlan.efficiency.toFixed(1)}%</span>
           <span className="stat-label">Efficiency</span>
         </div>
-        <div className="cut-plan-stat">
+        <div className={`cut-plan-stat ${cutPlan.waste <= 1 ? 'stat-good' : cutPlan.waste <= 3 ? 'stat-moderate' : 'stat-poor'}`}>
           <span className="stat-value">{cutPlan.waste.toFixed(2)}</span>
           <span className="stat-label">Waste (BF)</span>
         </div>
@@ -1083,9 +1292,9 @@ function CutPlanDisplay({ cutPlan, boards, onRegenerate, isRegenerating }) {
           <span className="stat-label">Boards Used</span>
         </div>
         {pricing && pricing.totalCost > 0 && (
-          <div className="cut-plan-stat highlight">
+          <div className="cut-plan-stat stat-highlight">
             <span className="stat-value">${pricing.totalCost.toFixed(2)}</span>
-            <span className="stat-label">Est. Cost</span>
+            <span className="stat-label">{pricing.isUsedOnly ? 'Cost (Used)' : 'Est. Cost'}</span>
           </div>
         )}
       </div>
@@ -1112,6 +1321,11 @@ function CutPlanDisplay({ cutPlan, boards, onRegenerate, isRegenerating }) {
       {pricing && pricing.items.length > 0 && (
         <div className="cut-plan-pricing">
           <h4>Estimated Material Cost</h4>
+          {pricing.isUsedOnly && (
+            <p className="pricing-context">
+              Showing cost for <strong>{pricing.boardsUsed} of {pricing.totalBoards}</strong> boards used in this cut plan.
+            </p>
+          )}
           <table className="pricing-table">
             <thead>
               <tr>
@@ -1818,6 +2032,80 @@ function PurchaseOrderModal({ isOpen, onClose, project, boards, userProfile }) {
   )
 }
 
+// Skeleton Loading Components
+function SkeletonProjectCard() {
+  return (
+    <div className="skeleton-project-card">
+      <div className="skeleton skeleton-title"></div>
+      <div className="skeleton skeleton-text"></div>
+      <div className="skeleton skeleton-meta"></div>
+    </div>
+  )
+}
+
+function SkeletonProjectList({ count = 3 }) {
+  return (
+    <div className="project-list">
+      <h2>Your Projects</h2>
+      {[...Array(count)].map((_, i) => (
+        <SkeletonProjectCard key={i} />
+      ))}
+    </div>
+  )
+}
+
+function SkeletonItem() {
+  return (
+    <div className="skeleton-item">
+      <div className="skeleton-item-info">
+        <div className="skeleton skeleton-title"></div>
+        <div className="skeleton skeleton-text"></div>
+      </div>
+      <div className="skeleton-item-actions">
+        <div className="skeleton skeleton-button"></div>
+        <div className="skeleton skeleton-button"></div>
+      </div>
+    </div>
+  )
+}
+
+function SkeletonItemList({ count = 3 }) {
+  return (
+    <>
+      {[...Array(count)].map((_, i) => (
+        <SkeletonItem key={i} />
+      ))}
+    </>
+  )
+}
+
+function SkeletonSummary() {
+  return (
+    <div className="skeleton-summary">
+      <div className="skeleton skeleton-title"></div>
+      <div className="skeleton-stats">
+        <div className="skeleton-stat"></div>
+        <div className="skeleton-stat"></div>
+      </div>
+    </div>
+  )
+}
+
+function SkeletonCutPlan() {
+  return (
+    <div className="skeleton-cut-plan">
+      <div className="skeleton skeleton-title"></div>
+      <div className="skeleton-cut-plan-stats">
+        <div className="skeleton skeleton-cut-plan-stat"></div>
+        <div className="skeleton skeleton-cut-plan-stat"></div>
+        <div className="skeleton skeleton-cut-plan-stat"></div>
+      </div>
+      <div className="skeleton skeleton-diagram"></div>
+      <div className="skeleton skeleton-diagram"></div>
+    </div>
+  )
+}
+
 // Main App Component
 function App() {
   const [session, setSession] = useState(null)
@@ -1829,6 +2117,7 @@ function App() {
   const [showProjectForm, setShowProjectForm] = useState(false)
   const [activeTab, setActiveTab] = useState('cutlist') // Default based on workflow
   const [syncStatus, setSyncStatus] = useState('synced') // 'synced', 'syncing', 'error'
+  const [isLoadingProjects, setIsLoadingProjects] = useState(true) // Initial load state
   const [isRegenerating, setIsRegenerating] = useState(false)
   const [draggingBoardId, setDraggingBoardId] = useState(null)
   const [dragOverBoardId, setDragOverBoardId] = useState(null)
@@ -1843,6 +2132,50 @@ function App() {
     phone: '',
     email: ''
   })
+
+  // Confirmation dialog state
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: null
+  })
+
+  const showConfirmDialog = (title, message, onConfirm) => {
+    setConfirmDialog({ isOpen: true, title, message, onConfirm })
+  }
+
+  const closeConfirmDialog = () => {
+    setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null })
+  }
+
+  // Confirmation wrapper for board delete
+  const confirmDeleteBoard = (boardId) => {
+    const board = currentProject?.boards.find(b => b.id === boardId)
+    const boardName = board?.name || 'this board'
+    showConfirmDialog(
+      'Delete Board?',
+      `Are you sure you want to delete "${boardName}"?`,
+      () => {
+        handleDeleteBoard(boardId)
+        closeConfirmDialog()
+      }
+    )
+  }
+
+  // Confirmation wrapper for cut piece delete
+  const confirmDeleteCutPiece = (pieceId) => {
+    const piece = currentProject?.cutPieces?.find(p => p.id === pieceId)
+    const pieceName = piece?.name || 'this cut piece'
+    showConfirmDialog(
+      'Delete Cut Piece?',
+      `Are you sure you want to delete "${pieceName}"?`,
+      () => {
+        handleDeleteCutPiece(pieceId)
+        closeConfirmDialog()
+      }
+    )
+  }
 
   // Check for existing session on mount
   useEffect(() => {
@@ -1927,6 +2260,7 @@ function App() {
   // Load all projects for the current user
   const loadProjects = async () => {
     setSyncStatus('syncing')
+    setIsLoadingProjects(true)
     try {
       // Load projects
       const { data: projectsData, error: projectsError } = await supabase
@@ -2002,6 +2336,8 @@ function App() {
     } catch (error) {
       console.error('Error loading projects:', error)
       setSyncStatus('error')
+    } finally {
+      setIsLoadingProjects(false)
     }
   }
 
@@ -2839,20 +3175,15 @@ function App() {
       <header>
         <div className="header-content">
           <img src={`${import.meta.env.BASE_URL}logo.png`} alt="CutSmart by The Joinery" className="header-logo" />
-          <div className="header-buttons">
-            <button
-              onClick={() => setShowSettings(true)}
-              className="settings-link"
-            >
-              ⚙ Settings
-            </button>
-            <button
-              onClick={() => setShowHelp(true)}
-              className="help-link"
-            >
-              ? Help
-            </button>
-          </div>
+          <Dropdown
+            icon="☰"
+            label="Menu"
+            className="header-menu"
+            items={[
+              { icon: '⚙', label: 'Settings', onClick: () => setShowSettings(true) },
+              { icon: '?', label: 'Help', onClick: () => setShowHelp(true) },
+            ]}
+          />
         </div>
       </header>
 
@@ -2869,6 +3200,13 @@ function App() {
         project={currentProject}
         boards={currentProject?.boards || []}
         userProfile={userProfile}
+      />
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={closeConfirmDialog}
       />
 
       <main>
@@ -2894,7 +3232,9 @@ function App() {
                   + New Project
                 </button>
 
-                {projects.length > 0 && (
+                {isLoadingProjects ? (
+                  <SkeletonProjectList count={3} />
+                ) : projects.length > 0 ? (
                   <div className="project-list">
                     <h2>Your Projects</h2>
                     {projects.map(project => (
@@ -2913,7 +3253,14 @@ function App() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            handleDeleteProject(project.id)
+                            showConfirmDialog(
+                              'Delete Project?',
+                              `Are you sure you want to delete "${project.name}"? This will also delete all boards and cut pieces in this project.`,
+                              () => {
+                                handleDeleteProject(project.id)
+                                closeConfirmDialog()
+                              }
+                            )
                           }}
                           className="btn-delete"
                         >
@@ -2921,6 +3268,12 @@ function App() {
                         </button>
                       </div>
                     ))}
+                  </div>
+                ) : (
+                  <div className="empty-state empty-state-projects">
+                    <div className="empty-state-icon">📐</div>
+                    <h3>No projects yet</h3>
+                    <p>Create your first project to start planning your cuts and calculating lumber needs.</p>
                   </div>
                 )}
               </>
@@ -2933,20 +3286,16 @@ function App() {
                 <button onClick={() => setCurrentProject(null)} className="btn-back">
                   ← Back to Projects
                 </button>
-                <button
-                  onClick={() => exportProjectToPDF(currentProject)}
-                  className="btn-export"
-                >
-                  Export Project to PDF
-                </button>
-                {currentProject.boards.length > 0 && (
-                  <button
-                    onClick={() => setShowPurchaseOrder(true)}
-                    className="btn-export"
-                  >
-                    Purchase Order
-                  </button>
-                )}
+                <Dropdown
+                  label="Actions"
+                  className="project-actions-dropdown"
+                  items={[
+                    { icon: '📄', label: 'Export to PDF', onClick: () => exportProjectToPDF(currentProject) },
+                    ...(currentProject.boards.length > 0 ? [
+                      { icon: '📋', label: 'Purchase Order', onClick: () => setShowPurchaseOrder(true) },
+                    ] : []),
+                  ]}
+                />
               </div>
               <div className="project-title">
                 <h2>{currentProject.name}</h2>
@@ -3068,7 +3417,7 @@ function App() {
                           <BoardForm onSubmit={handleAddBoard} />
                         )}
 
-                        {currentProject.boards.length > 0 && (
+                        {currentProject.boards.length > 0 ? (
                           <div className="board-list">
                             <h3>Stock Boards</h3>
                             <p className="reorder-hint">Drag to reorder</p>
@@ -3077,7 +3426,7 @@ function App() {
                                 key={board.id}
                                 board={board}
                                 onEdit={setEditingBoard}
-                                onDelete={handleDeleteBoard}
+                                onDelete={confirmDeleteBoard}
                                 onDragStart={handleBoardDragStart}
                                 onDragOver={handleBoardDragOver}
                                 onDrop={handleBoardDrop}
@@ -3099,6 +3448,12 @@ function App() {
                                 </button>
                               </div>
                             )}
+                          </div>
+                        ) : (
+                          <div className="empty-state empty-state-inline">
+                            <div className="empty-state-icon">🪵</div>
+                            <h3>No stock boards yet</h3>
+                            <p>Add the lumber you have available using the form above.</p>
                           </div>
                         )}
 
@@ -3164,7 +3519,7 @@ function App() {
                       />
                     )}
 
-                    {cutPieces.length > 0 && (
+                    {cutPieces.length > 0 ? (
                       <div className="cut-piece-list">
                         <h3>Cut Pieces</h3>
                         <p className="reorder-hint">Drag to reorder</p>
@@ -3173,7 +3528,7 @@ function App() {
                             key={piece.id}
                             piece={piece}
                             onEdit={setEditingCutPiece}
-                            onDelete={handleDeleteCutPiece}
+                            onDelete={confirmDeleteCutPiece}
                             onDragStart={handleCutPieceDragStart}
                             onDragOver={handleCutPieceDragOver}
                             onDrop={handleCutPieceDrop}
@@ -3182,6 +3537,12 @@ function App() {
                             isDragOver={dragOverCutPieceId === piece.id}
                           />
                         ))}
+                      </div>
+                    ) : (
+                      <div className="empty-state empty-state-inline">
+                        <div className="empty-state-icon">✂️</div>
+                        <h3>No cut pieces yet</h3>
+                        <p>Add the pieces you need to cut for your project using the form above.</p>
                       </div>
                     )}
 
@@ -3236,6 +3597,7 @@ function App() {
                         boards={currentProject.boards}
                         onRegenerate={handleGenerateCutPlan}
                         isRegenerating={isRegenerating}
+                        workflowType={currentProject.workflow}
                       />
                     ) : (
                       <div className="no-plan">

@@ -11,8 +11,8 @@ const COLORS = {
   white: [255, 255, 255]
 }
 
-// Cut piece colors for diagram
-const CUT_COLORS = [
+// Fallback cut piece colors for pieces without species
+const FALLBACK_COLORS = [
   [224, 104, 41],  // Craftsman Orange
   [50, 65, 104],   // Slate Blue
   [175, 207, 228], // Sky Blue
@@ -24,6 +24,87 @@ const CUT_COLORS = [
   [112, 128, 144], // Slate Gray
   [188, 143, 143]  // Rosy Brown
 ]
+
+// Species color mapping (hex to RGB) - matches App.jsx SPECIES_COLORS
+const SPECIES_COLORS = {
+  // Domestic - Common
+  'Walnut': [93, 64, 55],
+  'Walnut - Natural': [109, 76, 65],
+  'Walnut - Prime': [78, 52, 46],
+  'Cherry': [198, 40, 40],
+  'Cherry - Select': [211, 47, 47],
+  'Maple - Hard': [255, 204, 128],
+  'Maple - Soft': [255, 224, 178],
+  'Maple - Ambrosia': [255, 171, 145],
+  'Maple - Birds Eye': [255, 243, 224],
+  'Maple - Curly': [255, 224, 130],
+  'Oak - Red': [191, 54, 12],
+  'Oak - Red QS': [230, 74, 25],
+  'Oak - Red Rift': [255, 87, 34],
+  'Oak - White': [215, 204, 200],
+  'Oak - White QS': [239, 235, 233],
+  'Oak - White Rift': [251, 233, 231],
+  'Ash - White': [245, 245, 245],
+  'Poplar': [197, 225, 165],
+  'Hickory - Calico': [188, 170, 164],
+  'Hickory - Heart': [161, 136, 127],
+  // Domestic - Other
+  'Alder - Knotty': [255, 171, 145],
+  'Basswood': [255, 248, 225],
+  'Beech': [255, 228, 196],
+  'Birch - Yellow': [255, 245, 157],
+  'Butternut': [212, 165, 116],
+  'Catalpa': [230, 221, 209],
+  'Cedar - Aromatic': [212, 161, 144],
+  'Cedar - Western Red': [205, 127, 50],
+  'Douglas Fir': [222, 184, 135],
+  'Sycamore - QS': [240, 234, 214],
+  // Exotic
+  'Beli': [141, 110, 99],
+  'Black Limba': [62, 39, 35],
+  'Bloodwood': [139, 0, 0],
+  'Canarywood': [255, 213, 79],
+  'Ebiara': [121, 85, 72],
+  'Iroko': [166, 124, 82],
+  'Jatoba': [139, 69, 19],
+  'Leopardwood': [205, 133, 63],
+  'Mahogany - African': [192, 64, 0],
+  'Olivewood': [128, 128, 0],
+  'Osage Orange': [255, 140, 0],
+  'Padauk': [255, 69, 0],
+  'Peruvian Walnut': [101, 67, 33],
+  'Purple Heart': [153, 50, 204],
+  'Sapele - QS': [160, 82, 45],
+  'Spanish Cedar': [210, 105, 30],
+  'Wenge': [28, 28, 28],
+  // Default
+  'Other': [158, 158, 158]
+}
+
+/**
+ * Get RGB color array for a species
+ */
+function getSpeciesColor(species) {
+  return SPECIES_COLORS[species] || SPECIES_COLORS['Other']
+}
+
+/**
+ * Get contrasting text color (white or black) based on background
+ */
+function getContrastColor(rgb) {
+  const luminance = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255
+  return luminance > 0.5 ? [0, 0, 0] : [255, 255, 255]
+}
+
+/**
+ * Get color for a cut piece - species color if available, otherwise fallback
+ */
+function getCutColor(cut, idx) {
+  if (cut.species && SPECIES_COLORS[cut.species]) {
+    return getSpeciesColor(cut.species)
+  }
+  return FALLBACK_COLORS[idx % FALLBACK_COLORS.length]
+}
 
 /**
  * Parse lumber notation to inches
@@ -300,7 +381,22 @@ export function exportProjectToPDF(project) {
 
       doc.setFont('helvetica', 'normal')
       doc.setTextColor(...COLORS.charcoal)
-      doc.text(` - ${assignment.length}" × ${assignment.width}" × ${assignment.thickness}`, margin + doc.getTextWidth(boardLabel), y + 12)
+      let dimsText = ` - ${assignment.length}" × ${assignment.width}" × ${assignment.thickness}`
+      doc.text(dimsText, margin + doc.getTextWidth(boardLabel), y + 12)
+
+      // Add species with color dot if available
+      if (assignment.species) {
+        const speciesX = margin + doc.getTextWidth(boardLabel) + doc.getTextWidth(dimsText) + 10
+        const speciesColor = getSpeciesColor(assignment.species)
+
+        // Draw color dot
+        doc.setFillColor(...speciesColor)
+        doc.circle(speciesX + 4, y + 9, 4, 'F')
+
+        // Species name
+        doc.setTextColor(...COLORS.charcoal)
+        doc.text(` ${assignment.species}`, speciesX + 10, y + 12)
+      }
       y += 20
 
       // Board background
@@ -316,15 +412,16 @@ export function exportProjectToPDF(project) {
         const cutWidth = cut.length * scale
         const cutHeight = cut.width * scale
 
-        // Cut rectangle
-        const color = CUT_COLORS[cutIdx % CUT_COLORS.length]
+        // Cut rectangle - use species color if available
+        const color = getCutColor(cut, cutIdx)
+        const textColor = getContrastColor(color)
         doc.setFillColor(...color)
         doc.setDrawColor(...COLORS.deepNavy)
         doc.rect(cutX, cutY, cutWidth, cutHeight, 'FD')
 
         // Cut label (if it fits)
         if (cutWidth > 30 && cutHeight > 12) {
-          doc.setTextColor(...COLORS.white)
+          doc.setTextColor(...textColor)
           doc.setFontSize(Math.min(9, cutHeight * 0.5))
           doc.setFont('helvetica', 'bold')
 

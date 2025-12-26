@@ -21,7 +21,7 @@ export default function Auth() {
           email,
           password,
           options: {
-            emailRedirectTo: 'https://sricks1.github.io/board-foot-calculator/'
+            emailRedirectTo: 'https://cutsmart.thejoinery.club/'
           }
         })
         if (error) throw error

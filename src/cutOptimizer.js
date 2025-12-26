@@ -322,6 +322,7 @@ function flattenStrips(strips) {
         cutPieceId: piece.originalId,
         cutPieceName: piece.name,
         cutPieceIndex: piece.instanceIndex,
+        species: piece.species,  // Include species for color-coding
         x: piece.x,           // Position along length (horizontal in SVG)
         y: piece.y,           // Position along width (vertical in SVG)
         length: piece.placedLength,  // Horizontal dimension
