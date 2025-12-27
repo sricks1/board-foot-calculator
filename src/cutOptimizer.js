@@ -95,26 +95,31 @@ function createStripsForBoard(board, pieces, kerf) {
   const placedPieceIds = new Set()
   const placements = []
 
-  // Sort pieces by width (widest first), then by length (longest first)
-  // This ensures we establish wide strips first, then fill in with narrow pieces
+  // Sort pieces by area (largest first), then by longer dimension
+  // This gives the largest pieces priority for placement, leading to better packing
   const sortedPieces = [...pieces].sort((a, b) => {
-    const widthDiff = b.effectiveWidth - a.effectiveWidth
-    if (Math.abs(widthDiff) > 0.01) return widthDiff
-    return b.effectiveLength - a.effectiveLength
+    const areaA = a.effectiveWidth * a.effectiveLength
+    const areaB = b.effectiveWidth * b.effectiveLength
+    if (Math.abs(areaB - areaA) > 0.1) return areaB - areaA
+    // Tie-breaker: prefer pieces with longer dimension (fills more of the strip)
+    const maxDimA = Math.max(a.effectiveWidth, a.effectiveLength)
+    const maxDimB = Math.max(b.effectiveWidth, b.effectiveLength)
+    return maxDimB - maxDimA
   })
 
   // Track free rectangles: { x, y, width, height }
   // width = along board length (horizontal), height = along board width (vertical)
   let freeRects = [{ x: 0, y: 0, width: board.length, height: board.width }]
 
-  // Helper: find best fit for a piece (minimize wasted space)
-  // Kerf is accounted for:
-  // 1. At board edges (rough lumber needs jointing/ripping to get clean edge)
-  // 2. In splitRect when dividing remaining space between pieces
+  // Helper: find best fit for a piece using "Best Short Side Fit" (BSSF) heuristic
+  // This places pieces where they fit best along the shorter dimension,
+  // with tie-breaking by position (prefer bottom-left for visual consistency)
   const findBestFit = (pieceLength, pieceWidth) => {
     let bestRect = null
     let bestRotated = false
-    let bestScore = Infinity
+    let bestShortSide = Infinity
+    let bestLongSide = Infinity
+    let bestPosition = Infinity  // For tie-breaking by position
 
     for (const rect of freeRects) {
       // Calculate usable space in this rect
@@ -125,12 +130,24 @@ function createStripsForBoard(board, pieces, kerf) {
       const usableWidth = rect.width - (needsLengthEdgeKerf ? kerf : 0)
       const usableHeight = rect.height - (needsWidthEdgeKerf ? kerf : 0)
 
+      // Position score - prefer bottom-left placement (lower y, then lower x)
+      const positionScore = rect.y * 1000 + rect.x
+
       // Try normal orientation: piece length along rect width, piece width along rect height
       if (pieceLength <= usableWidth + 0.001 && pieceWidth <= usableHeight + 0.001) {
-        // Score: prefer smaller rects (less leftover space)
-        const score = (usableWidth - pieceLength) + (usableHeight - pieceWidth)
-        if (score < bestScore) {
-          bestScore = score
+        // Best Short Side Fit: minimize leftover on shorter edge
+        const leftoverWidth = usableWidth - pieceLength
+        const leftoverHeight = usableHeight - pieceWidth
+        const shortSide = Math.min(leftoverWidth, leftoverHeight)
+        const longSide = Math.max(leftoverWidth, leftoverHeight)
+
+        // Compare: prefer smaller short side, then smaller long side, then better position
+        if (shortSide < bestShortSide ||
+            (shortSide === bestShortSide && longSide < bestLongSide) ||
+            (shortSide === bestShortSide && longSide === bestLongSide && positionScore < bestPosition)) {
+          bestShortSide = shortSide
+          bestLongSide = longSide
+          bestPosition = positionScore
           bestRect = rect
           bestRotated = false
         }
@@ -138,9 +155,17 @@ function createStripsForBoard(board, pieces, kerf) {
 
       // Try rotated: piece width along rect width, piece length along rect height
       if (pieceWidth <= usableWidth + 0.001 && pieceLength <= usableHeight + 0.001) {
-        const score = (usableWidth - pieceWidth) + (usableHeight - pieceLength)
-        if (score < bestScore) {
-          bestScore = score
+        const leftoverWidth = usableWidth - pieceWidth
+        const leftoverHeight = usableHeight - pieceLength
+        const shortSide = Math.min(leftoverWidth, leftoverHeight)
+        const longSide = Math.max(leftoverWidth, leftoverHeight)
+
+        if (shortSide < bestShortSide ||
+            (shortSide === bestShortSide && longSide < bestLongSide) ||
+            (shortSide === bestShortSide && longSide === bestLongSide && positionScore < bestPosition)) {
+          bestShortSide = shortSide
+          bestLongSide = longSide
+          bestPosition = positionScore
           bestRect = rect
           bestRotated = true
         }
@@ -151,10 +176,11 @@ function createStripsForBoard(board, pieces, kerf) {
   }
 
   // Helper: split a rectangle after placing a piece (guillotine split)
+  // Uses "maximal rectangles" approach - create overlapping rectangles to maximize options
   const splitRect = (rect, placedWidth, placedHeight) => {
     const newRects = []
 
-    // Right remainder (to the right of the placed piece)
+    // Right remainder - full height (to the right of the placed piece)
     const rightWidth = rect.width - placedWidth - kerf
     if (rightWidth > 1) { // At least 1" useful
       newRects.push({
@@ -165,18 +191,37 @@ function createStripsForBoard(board, pieces, kerf) {
       })
     }
 
-    // Top remainder (above the placed piece, but only as wide as the piece)
+    // Top remainder - full width (above the placed piece)
     const topHeight = rect.height - placedHeight - kerf
     if (topHeight > 1) { // At least 1" useful
       newRects.push({
         x: rect.x,
         y: rect.y + placedHeight + kerf,
-        width: placedWidth, // Only as wide as the placed piece
+        width: rect.width, // Full width of original rect for better packing
         height: topHeight
       })
     }
 
     return newRects
+  }
+
+  // Helper: remove any rectangle that is fully contained within another
+  const removeContainedRects = () => {
+    freeRects = freeRects.filter((rect, i) => {
+      for (let j = 0; j < freeRects.length; j++) {
+        if (i === j) continue
+        const other = freeRects[j]
+        // Check if rect is fully contained within other
+        if (rect.x >= other.x - 0.01 &&
+            rect.y >= other.y - 0.01 &&
+            rect.x + rect.width <= other.x + other.width + 0.01 &&
+            rect.y + rect.height <= other.y + other.height + 0.01 &&
+            (rect.width < other.width - 0.01 || rect.height < other.height - 0.01)) {
+          return false // Remove this rect, it's contained in another
+        }
+      }
+      return true
+    })
   }
 
   // Helper: merge adjacent free rectangles where possible
@@ -226,6 +271,84 @@ function createStripsForBoard(board, pieces, kerf) {
     }
   }
 
+  // Helper: clip all free rectangles against a placed piece
+  // This handles the "maximal rectangles" approach where free rects can overlap
+  const clipRectsAgainstPlacement = (px, py, pwidth, pheight) => {
+    const newFreeRects = []
+
+    for (const rect of freeRects) {
+      // Check if this rect overlaps with the placed piece
+      const overlapX = Math.max(rect.x, px) < Math.min(rect.x + rect.width, px + pwidth + kerf)
+      const overlapY = Math.max(rect.y, py) < Math.min(rect.y + rect.height, py + pheight + kerf)
+
+      if (!overlapX || !overlapY) {
+        // No overlap, keep the rect
+        newFreeRects.push(rect)
+        continue
+      }
+
+      // There is overlap - split this rect into up to 4 non-overlapping pieces
+
+      // Left piece (to the left of the placed piece)
+      if (rect.x < px - 0.01) {
+        const leftWidth = px - rect.x - kerf
+        if (leftWidth > 1) {
+          newFreeRects.push({
+            x: rect.x,
+            y: rect.y,
+            width: leftWidth,
+            height: rect.height
+          })
+        }
+      }
+
+      // Right piece (to the right of the placed piece)
+      const placedRight = px + pwidth + kerf
+      if (rect.x + rect.width > placedRight + 0.01) {
+        const rightStart = Math.max(rect.x, placedRight)
+        const rightWidth = rect.x + rect.width - rightStart
+        if (rightWidth > 1) {
+          newFreeRects.push({
+            x: rightStart,
+            y: rect.y,
+            width: rightWidth,
+            height: rect.height
+          })
+        }
+      }
+
+      // Bottom piece (below the placed piece)
+      if (rect.y < py - 0.01) {
+        const bottomHeight = py - rect.y - kerf
+        if (bottomHeight > 1) {
+          newFreeRects.push({
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: bottomHeight
+          })
+        }
+      }
+
+      // Top piece (above the placed piece)
+      const placedTop = py + pheight + kerf
+      if (rect.y + rect.height > placedTop + 0.01) {
+        const topStart = Math.max(rect.y, placedTop)
+        const topHeight = rect.y + rect.height - topStart
+        if (topHeight > 1) {
+          newFreeRects.push({
+            x: rect.x,
+            y: topStart,
+            width: rect.width,
+            height: topHeight
+          })
+        }
+      }
+    }
+
+    freeRects = newFreeRects
+  }
+
   // Place pieces
   for (const piece of sortedPieces) {
     if (placedPieceIds.has(piece.uniqueId)) continue
@@ -245,10 +368,13 @@ function createStripsForBoard(board, pieces, kerf) {
       const xOffset = needsLengthEdgeKerf ? kerf : 0
       const yOffset = needsWidthEdgeKerf ? kerf : 0
 
+      const finalX = rect.x + xOffset
+      const finalY = rect.y + yOffset
+
       placements.push({
         ...piece,
-        x: rect.x + xOffset,
-        y: rect.y + yOffset,
+        x: finalX,
+        y: finalY,
         placedLength,
         placedWidth,
         rotated
@@ -256,22 +382,22 @@ function createStripsForBoard(board, pieces, kerf) {
 
       placedPieceIds.add(piece.uniqueId)
 
-      // Remove used rect and add new free rects
-      // Account for edge kerf in what we consumed from the rect
-      freeRects = freeRects.filter(r => r !== rect)
-      const consumedLength = placedLength + xOffset
-      const consumedWidth = placedWidth + yOffset
-      const newRects = splitRect(rect, consumedLength, consumedWidth)
-      freeRects.push(...newRects)
+      // Clip all free rectangles against the placed piece
+      // This handles overlapping maximal rectangles properly
+      clipRectsAgainstPlacement(finalX, finalY, placedLength, placedWidth)
 
-      // Sort rects by position (top-left first) for consistent placement
+      // Remove contained rectangles and merge adjacent ones
+      removeContainedRects()
+      mergeRects()
+
+      // Sort rects by position (bottom-left first) for consistent visual layout
+      // This ensures pieces fill from one corner outward
       freeRects.sort((a, b) => {
+        // Primary: prefer lower y (bottom of board)
         if (Math.abs(a.y - b.y) > 0.01) return a.y - b.y
+        // Secondary: prefer lower x (left side of board)
         return a.x - b.x
       })
-
-      // Merge adjacent rects
-      mergeRects()
     }
   }
 
