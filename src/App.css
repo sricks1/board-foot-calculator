@@ -3772,3 +3772,122 @@ header::after {
   font-weight: 500;
   color: var(--charcoal);
 }
+
+/* Material Type Toggle */
+.material-type-toggle {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.25rem;
+  background: var(--light-gray);
+  border-radius: 8px;
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.material-type-btn {
+  padding: 0.5rem 1.25rem;
+  border: none;
+  background: transparent;
+  color: var(--charcoal);
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.material-type-btn:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.material-type-btn.active {
+  background: white;
+  color: var(--forest-green);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Sheet Goods Form */
+.sheet-goods-form,
+.sheet-cut-piece-form {
+  animation: fadeIn 0.3s ease;
+}
+
+/* Grain Direction */
+.grain-direction-group {
+  flex: 1.5;
+}
+
+.grain-select {
+  width: 100%;
+}
+
+.grain-hint {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--gray);
+  margin-top: 0.25rem;
+  font-style: italic;
+}
+
+/* Grain Badge in cut piece items */
+.grain-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  background: var(--sky-blue);
+  color: var(--forest-green);
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-left: 0.5rem;
+  text-transform: uppercase;
+}
+
+/* Sheet Goods Items */
+.sheet-item,
+.sheet-cut-item {
+  border-left: 4px solid var(--sky-blue);
+}
+
+.sheet-item .board-info h4,
+.sheet-cut-item .cut-piece-info h4 {
+  color: var(--forest-green);
+}
+
+/* Sheet Goods Section */
+.sheet-goods-section,
+.sheet-cut-list-section,
+.sheet-cut-plan-section {
+  animation: fadeIn 0.3s ease;
+}
+
+.sheet-list h3,
+.sheet-cut-piece-list h3 {
+  color: var(--forest-green);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sheet-list h3::before {
+  content: '📦';
+}
+
+.sheet-cut-piece-list h3::before {
+  content: '✂️';
+}
+
+/* Sheet specific piece details */
+.piece-details {
+  font-size: 0.85rem;
+  color: var(--gray);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}

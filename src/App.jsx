@@ -163,6 +163,38 @@ const STOCK_TEMPLATES = [
 
 const THICKNESS_OPTIONS = ['4/4', '5/4', '6/4', '8/4', '10/4', '12/4', '16/4']
 
+// Sheet goods thickness options (in inches)
+const SHEET_THICKNESS_OPTIONS = ['1/4', '1/2', '3/4', '1']
+
+// Sheet goods product types
+const SHEET_PRODUCT_OPTIONS = [
+  'Baltic Birch',
+  'MDF',
+  'Plywood - Birch',
+  'Plywood - Maple',
+  'Plywood - Oak',
+  'Plywood - Walnut',
+  'Plywood - Cherry',
+  'Melamine',
+  'Particle Board',
+  'Other'
+]
+
+// Standard sheet sizes
+const SHEET_SIZE_OPTIONS = [
+  { name: '4×8 (Standard)', length: 96, width: 48 },
+  { name: '5×5 (Baltic Birch)', length: 60, width: 60 },
+  { name: '4×4', length: 48, width: 48 },
+  { name: 'Custom', length: null, width: null }
+]
+
+// Grain direction options
+const GRAIN_OPTIONS = [
+  { value: 'any', label: 'Any Direction', description: 'Optimizer can rotate freely' },
+  { value: 'length', label: 'With Grain', description: 'Piece length along 8\' (grain direction)' },
+  { value: 'width', label: 'Cross Grain', description: 'Piece length across grain' }
+]
+
 // Species options - includes all priced species from Capital Hardwood
 const SPECIES_OPTIONS = [
   // Domestic - Common
@@ -415,6 +447,496 @@ function BoardForm({ onSubmit, initialData, onCancel }) {
         )}
       </div>
     </form>
+  )
+}
+
+// Sheet Goods Form Component
+function SheetGoodsForm({ onSubmit, initialData, onCancel }) {
+  const [name, setName] = useState(initialData?.name || '')
+  const [product, setProduct] = useState(initialData?.product || 'Baltic Birch')
+  const [thickness, setThickness] = useState(initialData?.thickness || '3/4')
+  const [selectedSize, setSelectedSize] = useState(
+    initialData ? 'Custom' : '4×8 (Standard)'
+  )
+  const [length, setLength] = useState(initialData?.length || 96)
+  const [width, setWidth] = useState(initialData?.width || 48)
+  const [quantity, setQuantity] = useState(initialData?.quantity || 1)
+  const [pricePerSheet, setPricePerSheet] = useState(initialData?.pricePerSheet || '')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (initialData) {
+      setName(initialData.name || '')
+      setProduct(initialData.product || 'Baltic Birch')
+      setThickness(initialData.thickness || '3/4')
+      setLength(initialData.length || 96)
+      setWidth(initialData.width || 48)
+      setQuantity(initialData.quantity || 1)
+      setPricePerSheet(initialData.pricePerSheet || '')
+      setSelectedSize('Custom')
+    } else {
+      setName('')
+      setProduct('Baltic Birch')
+      setThickness('3/4')
+      setSelectedSize('4×8 (Standard)')
+      setLength(96)
+      setWidth(48)
+      setQuantity(1)
+      setPricePerSheet('')
+    }
+    setError('')
+  }, [initialData])
+
+  // Update dimensions when size selection changes
+  const handleSizeChange = (sizeName) => {
+    setSelectedSize(sizeName)
+    const sizeOption = SHEET_SIZE_OPTIONS.find(s => s.name === sizeName)
+    if (sizeOption && sizeOption.length) {
+      setLength(sizeOption.length)
+      setWidth(sizeOption.width)
+    }
+  }
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    setError('')
+
+    const lengthNum = parseFloat(length)
+    const widthNum = parseFloat(width)
+    const quantityNum = parseInt(quantity)
+    const priceNum = pricePerSheet ? parseFloat(pricePerSheet) : null
+
+    if (isNaN(lengthNum) || lengthNum <= 0) {
+      setError('Please enter a valid length')
+      return
+    }
+
+    if (isNaN(widthNum) || widthNum <= 0) {
+      setError('Please enter a valid width')
+      return
+    }
+
+    if (isNaN(quantityNum) || quantityNum < 1) {
+      setError('Please enter a valid quantity')
+      return
+    }
+
+    // Calculate square feet for the sheet
+    const sqFtPerSheet = (lengthNum * widthNum) / 144
+
+    onSubmit({
+      id: initialData?.id || Date.now(),
+      name: name || `${product} ${thickness}" ${lengthNum}"×${widthNum}"`,
+      product,
+      thickness,
+      length: lengthNum,
+      width: widthNum,
+      quantity: quantityNum,
+      pricePerSheet: priceNum,
+      sqFtPerSheet,
+      materialType: 'sheet'
+    })
+
+    if (!initialData) {
+      setName('')
+      setProduct('Baltic Birch')
+      setThickness('3/4')
+      setSelectedSize('4×8 (Standard)')
+      setLength(96)
+      setWidth(48)
+      setQuantity(1)
+      setPricePerSheet('')
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="board-form sheet-goods-form">
+      <h3>{initialData ? 'Edit Sheet' : 'Add Sheet Stock'}</h3>
+
+      {error && <div className="error">{error}</div>}
+
+      <div className="form-group">
+        <label htmlFor="sheetName">Name (optional)</label>
+        <input
+          id="sheetName"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g., Cabinet Sides"
+        />
+      </div>
+
+      <div className="form-row">
+        <div className="form-group">
+          <label htmlFor="product">Product Type</label>
+          <select
+            id="product"
+            value={product}
+            onChange={(e) => setProduct(e.target.value)}
+          >
+            {SHEET_PRODUCT_OPTIONS.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="sheetThickness">Thickness</label>
+          <select
+            id="sheetThickness"
+            value={thickness}
+            onChange={(e) => setThickness(e.target.value)}
+          >
+            {SHEET_THICKNESS_OPTIONS.map(opt => (
+              <option key={opt} value={opt}>{opt}"</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="sheetQuantity">Quantity</label>
+          <input
+            id="sheetQuantity"
+            type="number"
+            min="1"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            required
+          />
+        </div>
+      </div>
+
+      <div className="form-row">
+        <div className="form-group">
+          <label htmlFor="sheetSize">Sheet Size</label>
+          <select
+            id="sheetSize"
+            value={selectedSize}
+            onChange={(e) => handleSizeChange(e.target.value)}
+          >
+            {SHEET_SIZE_OPTIONS.map(opt => (
+              <option key={opt.name} value={opt.name}>{opt.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {selectedSize === 'Custom' && (
+          <>
+            <div className="form-group">
+              <label htmlFor="sheetLength">Length (in)</label>
+              <input
+                id="sheetLength"
+                type="number"
+                step="0.125"
+                value={length}
+                onChange={(e) => setLength(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="sheetWidth">Width (in)</label>
+              <input
+                id="sheetWidth"
+                type="number"
+                step="0.125"
+                value={width}
+                onChange={(e) => setWidth(e.target.value)}
+                required
+              />
+            </div>
+          </>
+        )}
+
+        <div className="form-group">
+          <label htmlFor="pricePerSheet">Price/Sheet ($)</label>
+          <input
+            id="pricePerSheet"
+            type="number"
+            step="0.01"
+            min="0"
+            value={pricePerSheet}
+            onChange={(e) => setPricePerSheet(e.target.value)}
+            placeholder="Optional"
+          />
+        </div>
+      </div>
+
+      <div className="form-actions">
+        <button type="submit" className="btn-primary">
+          {initialData ? 'Update Sheet' : 'Add Sheet'}
+        </button>
+        {onCancel && (
+          <button type="button" onClick={onCancel} className="btn-secondary">
+            Cancel
+          </button>
+        )}
+      </div>
+    </form>
+  )
+}
+
+// Sheet Goods List Item Component
+function SheetGoodsItem({ sheet, onEdit, onDelete, onDragStart, onDragOver, onDrop, onDragEnd, isDragging, isDragOver }) {
+  const qty = sheet.quantity || 1
+
+  return (
+    <div
+      className={`board-item sheet-item ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}`}
+      draggable
+      onDragStart={(e) => onDragStart(e, sheet.id)}
+      onDragOver={(e) => onDragOver(e, sheet.id)}
+      onDrop={(e) => onDrop(e, sheet.id)}
+      onDragEnd={onDragEnd}
+    >
+      <div className="drag-handle">⋮⋮</div>
+      <div className="board-info">
+        <h4>{sheet.name || `${sheet.product} ${sheet.thickness}"`}</h4>
+        <p>
+          {sheet.length}" × {sheet.width}" × {sheet.thickness}"
+          {qty > 1 && ` (×${qty})`}
+        </p>
+        <p className="board-feet">
+          {(sheet.sqFtPerSheet * qty).toFixed(1)} sq ft total
+          {sheet.pricePerSheet && ` • $${(sheet.pricePerSheet * qty).toFixed(2)}`}
+        </p>
+      </div>
+      <div className="board-actions">
+        <button onClick={() => onEdit(sheet)} className="btn-edit">Edit</button>
+        <button onClick={() => onDelete(sheet.id)} className="btn-delete">Delete</button>
+      </div>
+    </div>
+  )
+}
+
+// Sheet Cut Piece Form Component
+function SheetCutPieceForm({ onSubmit, initialData, onCancel, availableProducts, availableThicknesses }) {
+  const [name, setName] = useState(initialData?.name || '')
+  const [length, setLength] = useState(initialData?.length || '')
+  const [width, setWidth] = useState(initialData?.width || '')
+  const [thickness, setThickness] = useState(initialData?.thickness || (availableThicknesses?.[0] || '3/4'))
+  const [product, setProduct] = useState(initialData?.product || (availableProducts?.[0] || 'Baltic Birch'))
+  const [quantity, setQuantity] = useState(initialData?.quantity || 1)
+  const [grainDirection, setGrainDirection] = useState(initialData?.grainDirection || 'any')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (initialData) {
+      setName(initialData.name || '')
+      setLength(initialData.length || '')
+      setWidth(initialData.width || '')
+      setThickness(initialData.thickness || '3/4')
+      setProduct(initialData.product || 'Baltic Birch')
+      setQuantity(initialData.quantity || 1)
+      setGrainDirection(initialData.grainDirection || 'any')
+    } else {
+      setName('')
+      setLength('')
+      setWidth('')
+      setThickness(availableThicknesses?.[0] || '3/4')
+      setProduct(availableProducts?.[0] || 'Baltic Birch')
+      setQuantity(1)
+      setGrainDirection('any')
+    }
+    setError('')
+  }, [initialData, availableProducts, availableThicknesses])
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    setError('')
+
+    const lengthNum = parseFloat(length)
+    const widthNum = parseFloat(width)
+    const quantityNum = parseInt(quantity)
+
+    if (isNaN(lengthNum) || lengthNum <= 0) {
+      setError('Please enter a valid length')
+      return
+    }
+
+    if (isNaN(widthNum) || widthNum <= 0) {
+      setError('Please enter a valid width')
+      return
+    }
+
+    if (isNaN(quantityNum) || quantityNum < 1) {
+      setError('Please enter a valid quantity')
+      return
+    }
+
+    onSubmit({
+      id: initialData?.id || Date.now(),
+      name: name || `Sheet Part ${Date.now()}`,
+      length: lengthNum,
+      width: widthNum,
+      thickness,
+      product,
+      quantity: quantityNum,
+      grainDirection,
+      materialType: 'sheet'
+    })
+
+    if (!initialData) {
+      setName('')
+      setLength('')
+      setWidth('')
+      setQuantity(1)
+      setGrainDirection('any')
+    }
+  }
+
+  const thicknessOptions = availableThicknesses?.length > 0 ? availableThicknesses : SHEET_THICKNESS_OPTIONS
+  const productOptions = availableProducts?.length > 0 ? availableProducts : SHEET_PRODUCT_OPTIONS
+
+  return (
+    <form onSubmit={handleSubmit} className="cut-piece-form sheet-cut-piece-form">
+      <h3>{initialData ? 'Edit Sheet Cut Piece' : 'Add Sheet Cut Piece'}</h3>
+
+      {error && <div className="error">{error}</div>}
+
+      <div className="form-group">
+        <label htmlFor="sheetPieceName">Piece Name</label>
+        <input
+          id="sheetPieceName"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g., Cabinet Side, Shelf"
+          required
+        />
+      </div>
+
+      <div className="form-row">
+        <div className="form-group">
+          <label htmlFor="sheetPieceLength">Length (in)</label>
+          <input
+            id="sheetPieceLength"
+            type="number"
+            step="0.125"
+            value={length}
+            onChange={(e) => setLength(e.target.value)}
+            placeholder="e.g., 24"
+            required
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="sheetPieceWidth">Width (in)</label>
+          <input
+            id="sheetPieceWidth"
+            type="number"
+            step="0.125"
+            value={width}
+            onChange={(e) => setWidth(e.target.value)}
+            placeholder="e.g., 12"
+            required
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="sheetPieceThickness">Thickness</label>
+          <select
+            id="sheetPieceThickness"
+            value={thickness}
+            onChange={(e) => setThickness(e.target.value)}
+          >
+            {thicknessOptions.map(opt => (
+              <option key={opt} value={opt}>{opt}"</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="sheetPieceQty">Quantity</label>
+          <input
+            id="sheetPieceQty"
+            type="number"
+            min="1"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            required
+          />
+        </div>
+      </div>
+
+      <div className="form-row">
+        <div className="form-group">
+          <label htmlFor="sheetPieceProduct">Product Type</label>
+          <select
+            id="sheetPieceProduct"
+            value={product}
+            onChange={(e) => setProduct(e.target.value)}
+          >
+            {productOptions.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-group grain-direction-group">
+          <label htmlFor="grainDirection">Grain Direction</label>
+          <select
+            id="grainDirection"
+            value={grainDirection}
+            onChange={(e) => setGrainDirection(e.target.value)}
+            className="grain-select"
+          >
+            {GRAIN_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <span className="grain-hint">
+            {GRAIN_OPTIONS.find(o => o.value === grainDirection)?.description}
+          </span>
+        </div>
+      </div>
+
+      <div className="form-actions">
+        <button type="submit" className="btn-primary">
+          {initialData ? 'Update Piece' : 'Add Piece'}
+        </button>
+        {onCancel && (
+          <button type="button" onClick={onCancel} className="btn-secondary">
+            Cancel
+          </button>
+        )}
+      </div>
+    </form>
+  )
+}
+
+// Sheet Cut Piece Item Component
+function SheetCutPieceItem({ piece, onEdit, onDelete, onDragStart, onDragOver, onDrop, onDragEnd, isDragging, isDragOver }) {
+  const grainLabel = GRAIN_OPTIONS.find(o => o.value === piece.grainDirection)?.label || 'Any'
+
+  return (
+    <div
+      className={`cut-piece-item sheet-cut-item ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}`}
+      draggable
+      onDragStart={(e) => onDragStart(e, piece.id)}
+      onDragOver={(e) => onDragOver(e, piece.id)}
+      onDrop={(e) => onDrop(e, piece.id)}
+      onDragEnd={onDragEnd}
+    >
+      <div className="drag-handle">⋮⋮</div>
+      <div className="cut-piece-info">
+        <h4>{piece.name}</h4>
+        <p>
+          {piece.length}" × {piece.width}" × {piece.thickness}"
+          {piece.quantity > 1 && ` (×${piece.quantity})`}
+        </p>
+        <p className="piece-details">
+          {piece.product}
+          {piece.grainDirection !== 'any' && (
+            <span className="grain-badge">{grainLabel}</span>
+          )}
+        </p>
+      </div>
+      <div className="cut-piece-actions">
+        <button onClick={() => onEdit(piece)} className="btn-edit">Edit</button>
+        <button onClick={() => onDelete(piece.id)} className="btn-delete">Delete</button>
+      </div>
+    </div>
   )
 }
 
@@ -2125,6 +2647,15 @@ function App() {
   const [dragOverCutPieceId, setDragOverCutPieceId] = useState(null)
   const [showHelp, setShowHelp] = useState(false)
   const [showPurchaseOrder, setShowPurchaseOrder] = useState(false)
+  // Material type: 'lumber' or 'sheet'
+  const [materialType, setMaterialType] = useState('lumber')
+  // Sheet goods state
+  const [editingSheetGoods, setEditingSheetGoods] = useState(null)
+  const [editingSheetCutPiece, setEditingSheetCutPiece] = useState(null)
+  const [draggingSheetId, setDraggingSheetId] = useState(null)
+  const [dragOverSheetId, setDragOverSheetId] = useState(null)
+  const [draggingSheetPieceId, setDraggingSheetPieceId] = useState(null)
+  const [dragOverSheetPieceId, setDragOverSheetPieceId] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
   const [userProfile, setUserProfile] = useState({
     name: '',
@@ -2201,6 +2732,21 @@ function App() {
       setUserProfile({ name: '', address: '', phone: '', email: '' })
     }
   }, [session])
+
+  // Switch to appropriate tab when material type changes
+  useEffect(() => {
+    if (materialType === 'lumber') {
+      // If on a sheet goods tab, switch to lumber equivalent
+      if (activeTab === 'sheetStock') setActiveTab('stock')
+      else if (activeTab === 'sheetCutlist') setActiveTab('cutlist')
+      else if (activeTab === 'sheetPlan') setActiveTab('plan')
+    } else {
+      // If on a lumber tab, switch to sheet goods equivalent
+      if (activeTab === 'stock') setActiveTab('sheetStock')
+      else if (activeTab === 'cutlist') setActiveTab('sheetCutlist')
+      else if (activeTab === 'plan') setActiveTab('sheetPlan')
+    }
+  }, [materialType])
 
   // Load user profile from Supabase
   const loadUserProfile = async () => {
@@ -3000,6 +3546,234 @@ function App() {
     setDragOverCutPieceId(null)
   }
 
+  // Sheet goods handlers (local state for now - can add Supabase persistence later)
+  const handleAddSheetGoods = (sheet) => {
+    const sheetGoods = currentProject.sheetGoods || []
+    const newSheet = { ...sheet, id: Date.now() }
+    const updatedProject = {
+      ...currentProject,
+      sheetGoods: [...sheetGoods, newSheet],
+      sheetCutPlan: null
+    }
+    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+    setCurrentProject(updatedProject)
+  }
+
+  const handleUpdateSheetGoods = (updatedSheet) => {
+    const sheetGoods = currentProject.sheetGoods || []
+    const updatedProject = {
+      ...currentProject,
+      sheetGoods: sheetGoods.map(s => s.id === updatedSheet.id ? updatedSheet : s),
+      sheetCutPlan: null
+    }
+    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+    setCurrentProject(updatedProject)
+    setEditingSheetGoods(null)
+  }
+
+  const handleDeleteSheetGoods = (sheetId) => {
+    const sheetGoods = currentProject.sheetGoods || []
+    const updatedProject = {
+      ...currentProject,
+      sheetGoods: sheetGoods.filter(s => s.id !== sheetId),
+      sheetCutPlan: null
+    }
+    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+    setCurrentProject(updatedProject)
+  }
+
+  const handleAddSheetCutPiece = (piece) => {
+    const sheetCutPieces = currentProject.sheetCutPieces || []
+    const newPiece = { ...piece, id: Date.now() }
+    const updatedProject = {
+      ...currentProject,
+      sheetCutPieces: [...sheetCutPieces, newPiece],
+      sheetCutPlan: null
+    }
+    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+    setCurrentProject(updatedProject)
+  }
+
+  const handleUpdateSheetCutPiece = (updatedPiece) => {
+    const sheetCutPieces = currentProject.sheetCutPieces || []
+    const updatedProject = {
+      ...currentProject,
+      sheetCutPieces: sheetCutPieces.map(p => p.id === updatedPiece.id ? updatedPiece : p),
+      sheetCutPlan: null
+    }
+    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+    setCurrentProject(updatedProject)
+    setEditingSheetCutPiece(null)
+  }
+
+  const handleDeleteSheetCutPiece = (pieceId) => {
+    const sheetCutPieces = currentProject.sheetCutPieces || []
+    const updatedProject = {
+      ...currentProject,
+      sheetCutPieces: sheetCutPieces.filter(p => p.id !== pieceId),
+      sheetCutPlan: null
+    }
+    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+    setCurrentProject(updatedProject)
+  }
+
+  // Sheet goods drag handlers
+  const handleSheetDragStart = (e, sheetId) => {
+    setDraggingSheetId(sheetId)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleSheetDragOver = (e, sheetId) => {
+    e.preventDefault()
+    if (sheetId !== draggingSheetId) {
+      setDragOverSheetId(sheetId)
+    }
+  }
+
+  const handleSheetDrop = (e, targetSheetId) => {
+    e.preventDefault()
+    if (!draggingSheetId || draggingSheetId === targetSheetId) {
+      setDraggingSheetId(null)
+      setDragOverSheetId(null)
+      return
+    }
+
+    const sheetGoods = [...(currentProject.sheetGoods || [])]
+    const dragIndex = sheetGoods.findIndex(s => s.id === draggingSheetId)
+    const dropIndex = sheetGoods.findIndex(s => s.id === targetSheetId)
+
+    if (dragIndex === -1 || dropIndex === -1) return
+
+    const [removed] = sheetGoods.splice(dragIndex, 1)
+    sheetGoods.splice(dropIndex, 0, removed)
+
+    const updatedProject = {
+      ...currentProject,
+      sheetGoods,
+      sheetCutPlan: null
+    }
+    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+    setCurrentProject(updatedProject)
+
+    setDraggingSheetId(null)
+    setDragOverSheetId(null)
+  }
+
+  const handleSheetDragEnd = () => {
+    setDraggingSheetId(null)
+    setDragOverSheetId(null)
+  }
+
+  // Sheet cut piece drag handlers
+  const handleSheetPieceDragStart = (e, pieceId) => {
+    setDraggingSheetPieceId(pieceId)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleSheetPieceDragOver = (e, pieceId) => {
+    e.preventDefault()
+    if (pieceId !== draggingSheetPieceId) {
+      setDragOverSheetPieceId(pieceId)
+    }
+  }
+
+  const handleSheetPieceDrop = (e, targetPieceId) => {
+    e.preventDefault()
+    if (!draggingSheetPieceId || draggingSheetPieceId === targetPieceId) {
+      setDraggingSheetPieceId(null)
+      setDragOverSheetPieceId(null)
+      return
+    }
+
+    const sheetCutPieces = [...(currentProject.sheetCutPieces || [])]
+    const dragIndex = sheetCutPieces.findIndex(p => p.id === draggingSheetPieceId)
+    const dropIndex = sheetCutPieces.findIndex(p => p.id === targetPieceId)
+
+    if (dragIndex === -1 || dropIndex === -1) return
+
+    const [removed] = sheetCutPieces.splice(dragIndex, 1)
+    sheetCutPieces.splice(dropIndex, 0, removed)
+
+    const updatedProject = {
+      ...currentProject,
+      sheetCutPieces,
+      sheetCutPlan: null
+    }
+    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+    setCurrentProject(updatedProject)
+
+    setDraggingSheetPieceId(null)
+    setDragOverSheetPieceId(null)
+  }
+
+  const handleSheetPieceDragEnd = () => {
+    setDraggingSheetPieceId(null)
+    setDragOverSheetPieceId(null)
+  }
+
+  // Generate sheet goods cut plan
+  const handleGenerateSheetCutPlan = async () => {
+    const sheetCutPieces = currentProject.sheetCutPieces || []
+    const sheetGoods = currentProject.sheetGoods || []
+
+    if (sheetCutPieces.length === 0) {
+      alert('Add cut pieces first before generating a plan.')
+      return
+    }
+    if (sheetGoods.length === 0) {
+      alert('Add sheet stock first before generating a plan.')
+      return
+    }
+
+    setIsRegenerating(true)
+
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // Convert sheet goods to board format for optimizer
+    const boardsFromSheets = sheetGoods.flatMap(sheet => {
+      const qty = sheet.quantity || 1
+      return Array.from({ length: qty }, (_, i) => ({
+        id: `${sheet.id}-${i}`,
+        name: sheet.name || `${sheet.product} ${sheet.thickness}"`,
+        length: sheet.length,
+        width: sheet.width,
+        thickness: sheet.thickness,
+        thicknessInches: parseFloat(sheet.thickness.replace(/[^\d.]/g, '')) || 0.75,
+        species: sheet.product, // Use product as species for grouping
+        quantity: 1,
+        boardFeetPerPiece: (sheet.length * sheet.width) / 144,
+        boardFeet: (sheet.length * sheet.width) / 144,
+        materialType: 'sheet',
+        pricePerSheet: sheet.pricePerSheet
+      }))
+    })
+
+    // Convert sheet cut pieces to cut piece format
+    const cutPiecesForOptimizer = sheetCutPieces.map(piece => ({
+      ...piece,
+      species: piece.product, // Use product as species for grouping
+      thickness: piece.thickness
+    }))
+
+    // Multiply by project quantity
+    const projectQty = currentProject.quantity || 1
+    const multipliedCutPieces = projectQty > 1
+      ? cutPiecesForOptimizer.map(p => ({ ...p, quantity: (p.quantity || 1) * projectQty }))
+      : cutPiecesForOptimizer
+
+    // Use existing optimizer (with kerf of 0.125 for sheet goods - typical blade width)
+    const cutPlan = optimizeCuts(boardsFromSheets, multipliedCutPieces, 0.125)
+
+    const updatedProject = {
+      ...currentProject,
+      sheetCutPlan: cutPlan
+    }
+    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+    setCurrentProject(updatedProject)
+    setActiveTab('sheetPlan')
+    setIsRegenerating(false)
+  }
+
   // Generate cut plan
   const handleGenerateCutPlan = async () => {
     const cutPieces = currentProject.cutPieces || []
@@ -3319,63 +4093,109 @@ function App() {
               </div>
             </div>
 
-            {/* Workflow Indicator */}
-            <div className="workflow-indicator">
-              {workflowType === 'calculate' ? (
-                <span>📐 Calculate Stock Workflow</span>
-              ) : (
-                <span>🪵 Known Stock Workflow</span>
-              )}
+            {/* Material Type Toggle */}
+            <div className="material-type-toggle">
+              <button
+                className={`material-type-btn ${materialType === 'lumber' ? 'active' : ''}`}
+                onClick={() => setMaterialType('lumber')}
+              >
+                🪵 Lumber
+              </button>
+              <button
+                className={`material-type-btn ${materialType === 'sheet' ? 'active' : ''}`}
+                onClick={() => setMaterialType('sheet')}
+              >
+                📦 Sheet Goods
+              </button>
             </div>
 
-            {/* Tab Navigation - Order based on workflow */}
+            {/* Workflow Indicator - Only for lumber */}
+            {materialType === 'lumber' && (
+              <div className="workflow-indicator">
+                {workflowType === 'calculate' ? (
+                  <span>📐 Calculate Stock Workflow</span>
+                ) : (
+                  <span>🪵 Known Stock Workflow</span>
+                )}
+              </div>
+            )}
+
+            {/* Tab Navigation - Different for lumber vs sheet goods */}
             <div className="tab-nav">
-              {workflowType === 'calculate' ? (
-                <>
-                  <button
-                    className={`tab-btn ${activeTab === 'cutlist' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('cutlist')}
-                  >
-                    <span className="tab-step">1</span>
-                    Cut List ({cutPieces.length})
-                  </button>
-                  <button
-                    className={`tab-btn ${activeTab === 'stock' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('stock')}
-                  >
-                    <span className="tab-step">2</span>
-                    Stock Boards ({currentProject.boards.length})
-                  </button>
-                  <button
-                    className={`tab-btn ${activeTab === 'plan' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('plan')}
-                  >
-                    <span className="tab-step">3</span>
-                    Cut Plan {currentProject.cutPlan ? '✓' : ''}
-                  </button>
-                </>
+              {materialType === 'lumber' ? (
+                // Lumber tabs - order based on workflow
+                workflowType === 'calculate' ? (
+                  <>
+                    <button
+                      className={`tab-btn ${activeTab === 'cutlist' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('cutlist')}
+                    >
+                      <span className="tab-step">1</span>
+                      Cut List ({cutPieces.length})
+                    </button>
+                    <button
+                      className={`tab-btn ${activeTab === 'stock' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('stock')}
+                    >
+                      <span className="tab-step">2</span>
+                      Stock Boards ({currentProject.boards.length})
+                    </button>
+                    <button
+                      className={`tab-btn ${activeTab === 'plan' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('plan')}
+                    >
+                      <span className="tab-step">3</span>
+                      Cut Plan {currentProject.cutPlan ? '✓' : ''}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className={`tab-btn ${activeTab === 'stock' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('stock')}
+                    >
+                      <span className="tab-step">1</span>
+                      Stock Boards ({currentProject.boards.length})
+                    </button>
+                    <button
+                      className={`tab-btn ${activeTab === 'cutlist' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('cutlist')}
+                    >
+                      <span className="tab-step">2</span>
+                      Cut List ({cutPieces.length})
+                    </button>
+                    <button
+                      className={`tab-btn ${activeTab === 'plan' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('plan')}
+                    >
+                      <span className="tab-step">3</span>
+                      Cut Plan {currentProject.cutPlan ? '✓' : ''}
+                    </button>
+                  </>
+                )
               ) : (
+                // Sheet goods tabs - always same order
                 <>
                   <button
-                    className={`tab-btn ${activeTab === 'stock' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('stock')}
+                    className={`tab-btn ${activeTab === 'sheetStock' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('sheetStock')}
                   >
                     <span className="tab-step">1</span>
-                    Stock Boards ({currentProject.boards.length})
+                    Sheets ({currentProject.sheetGoods?.length || 0})
                   </button>
                   <button
-                    className={`tab-btn ${activeTab === 'cutlist' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('cutlist')}
+                    className={`tab-btn ${activeTab === 'sheetCutlist' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('sheetCutlist')}
                   >
                     <span className="tab-step">2</span>
-                    Cut List ({cutPieces.length})
+                    Cut List ({currentProject.sheetCutPieces?.length || 0})
                   </button>
                   <button
-                    className={`tab-btn ${activeTab === 'plan' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('plan')}
+                    className={`tab-btn ${activeTab === 'sheetPlan' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('sheetPlan')}
                   >
                     <span className="tab-step">3</span>
-                    Cut Plan {currentProject.cutPlan ? '✓' : ''}
+                    Cut Plan {currentProject.sheetCutPlan ? '✓' : ''}
                   </button>
                 </>
               )}
@@ -3647,6 +4467,182 @@ function App() {
                         {cutPieces.length > 0 && currentProject.boards.length > 0 && (
                           <button
                             onClick={handleGenerateCutPlan}
+                            className="btn-primary btn-large"
+                          >
+                            Generate Cut Plan
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Sheet Goods Stock Tab */}
+                {activeTab === 'sheetStock' && (
+                  <div className="boards-section sheet-goods-section">
+                    {editingSheetGoods ? (
+                      <SheetGoodsForm
+                        initialData={editingSheetGoods}
+                        onSubmit={handleUpdateSheetGoods}
+                        onCancel={() => setEditingSheetGoods(null)}
+                      />
+                    ) : (
+                      <SheetGoodsForm onSubmit={handleAddSheetGoods} />
+                    )}
+
+                    {(currentProject.sheetGoods?.length || 0) > 0 ? (
+                      <div className="board-list sheet-list">
+                        <h3>Sheet Stock</h3>
+                        <p className="reorder-hint">Drag to reorder</p>
+                        {currentProject.sheetGoods.map(sheet => (
+                          <SheetGoodsItem
+                            key={sheet.id}
+                            sheet={sheet}
+                            onEdit={setEditingSheetGoods}
+                            onDelete={handleDeleteSheetGoods}
+                            onDragStart={handleSheetDragStart}
+                            onDragOver={handleSheetDragOver}
+                            onDrop={handleSheetDrop}
+                            onDragEnd={handleSheetDragEnd}
+                            isDragging={draggingSheetId === sheet.id}
+                            isDragOver={dragOverSheetId === sheet.id}
+                          />
+                        ))}
+
+                        {(currentProject.sheetCutPieces?.length || 0) === 0 && (
+                          <div className="next-step-prompt">
+                            <p>Sheet stock added! Now add your cut pieces.</p>
+                            <button
+                              onClick={() => setActiveTab('sheetCutlist')}
+                              className="btn-primary"
+                            >
+                              Continue to Cut List →
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="empty-state empty-state-inline">
+                        <div className="empty-state-icon">📦</div>
+                        <h3>No sheet stock yet</h3>
+                        <p>Add the plywood, MDF, or other sheet goods you have available using the form above.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Sheet Goods Cut List Tab */}
+                {activeTab === 'sheetCutlist' && (
+                  <div className="cut-list-section sheet-cut-list-section">
+                    {editingSheetCutPiece ? (
+                      <SheetCutPieceForm
+                        initialData={editingSheetCutPiece}
+                        onSubmit={handleUpdateSheetCutPiece}
+                        onCancel={() => setEditingSheetCutPiece(null)}
+                        availableProducts={[...new Set((currentProject.sheetGoods || []).map(s => s.product))]}
+                        availableThicknesses={[...new Set((currentProject.sheetGoods || []).map(s => s.thickness))]}
+                      />
+                    ) : (
+                      <SheetCutPieceForm
+                        onSubmit={handleAddSheetCutPiece}
+                        availableProducts={[...new Set((currentProject.sheetGoods || []).map(s => s.product))]}
+                        availableThicknesses={[...new Set((currentProject.sheetGoods || []).map(s => s.thickness))]}
+                      />
+                    )}
+
+                    {(currentProject.sheetCutPieces?.length || 0) > 0 ? (
+                      <div className="cut-piece-list sheet-cut-piece-list">
+                        <h3>Cut Pieces</h3>
+                        <p className="reorder-hint">Drag to reorder</p>
+                        {currentProject.sheetCutPieces.map(piece => (
+                          <SheetCutPieceItem
+                            key={piece.id}
+                            piece={piece}
+                            onEdit={setEditingSheetCutPiece}
+                            onDelete={handleDeleteSheetCutPiece}
+                            onDragStart={handleSheetPieceDragStart}
+                            onDragOver={handleSheetPieceDragOver}
+                            onDrop={handleSheetPieceDrop}
+                            onDragEnd={handleSheetPieceDragEnd}
+                            isDragging={draggingSheetPieceId === piece.id}
+                            isDragOver={dragOverSheetPieceId === piece.id}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="empty-state empty-state-inline">
+                        <div className="empty-state-icon">✂️</div>
+                        <h3>No cut pieces yet</h3>
+                        <p>Add the pieces you need to cut from your sheet stock using the form above.</p>
+                      </div>
+                    )}
+
+                    {(currentProject.sheetCutPieces?.length || 0) > 0 && (
+                      <div className="next-step-section">
+                        {(currentProject.sheetGoods?.length || 0) === 0 && (
+                          <div className="workflow-prompt">
+                            <p>You need sheet stock to generate a cut plan.</p>
+                            <button
+                              onClick={() => setActiveTab('sheetStock')}
+                              className="btn-primary"
+                            >
+                              Go to Sheet Stock
+                            </button>
+                          </div>
+                        )}
+
+                        {(currentProject.sheetGoods?.length || 0) > 0 && (
+                          <div className="generate-plan-section">
+                            <button
+                              onClick={handleGenerateSheetCutPlan}
+                              className="btn-primary btn-large"
+                            >
+                              Generate Cut Plan →
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Sheet Goods Cut Plan Tab */}
+                {activeTab === 'sheetPlan' && (
+                  <div className="cut-plan-section sheet-cut-plan-section">
+                    {currentProject.sheetCutPlan ? (
+                      <CutPlanDisplay
+                        cutPlan={currentProject.sheetCutPlan}
+                        boards={currentProject.sheetGoods || []}
+                        onRegenerate={handleGenerateSheetCutPlan}
+                        isRegenerating={isRegenerating}
+                        workflowType="known"
+                        materialType="sheet"
+                      />
+                    ) : (
+                      <div className="no-plan">
+                        <h3>Cut Plan</h3>
+                        <p>No cut plan generated yet.</p>
+
+                        {(currentProject.sheetGoods?.length || 0) === 0 && (
+                          <div className="workflow-prompt">
+                            <p>Start by adding your sheet stock.</p>
+                            <button onClick={() => setActiveTab('sheetStock')} className="btn-primary">
+                              Go to Sheet Stock
+                            </button>
+                          </div>
+                        )}
+                        {(currentProject.sheetGoods?.length || 0) > 0 && (currentProject.sheetCutPieces?.length || 0) === 0 && (
+                          <div className="workflow-prompt">
+                            <p>Next, add your cut pieces.</p>
+                            <button onClick={() => setActiveTab('sheetCutlist')} className="btn-primary">
+                              Go to Cut List
+                            </button>
+                          </div>
+                        )}
+
+                        {(currentProject.sheetCutPieces?.length || 0) > 0 && (currentProject.sheetGoods?.length || 0) > 0 && (
+                          <button
+                            onClick={handleGenerateSheetCutPlan}
                             className="btn-primary btn-large"
                           >
                             Generate Cut Plan

@@ -114,12 +114,20 @@ function createStripsForBoard(board, pieces, kerf) {
   // Helper: find best fit for a piece using "Best Short Side Fit" (BSSF) heuristic
   // This places pieces where they fit best along the shorter dimension,
   // with tie-breaking by position (prefer bottom-left for visual consistency)
-  const findBestFit = (pieceLength, pieceWidth) => {
+  // grainDirection: 'any' | 'length' | 'width'
+  //   - 'any': try both orientations (default)
+  //   - 'length': piece length must align with board length (no rotation)
+  //   - 'width': piece length must align with board width (force rotation)
+  const findBestFit = (pieceLength, pieceWidth, grainDirection = 'any') => {
     let bestRect = null
     let bestRotated = false
     let bestShortSide = Infinity
     let bestLongSide = Infinity
     let bestPosition = Infinity  // For tie-breaking by position
+
+    // Determine which orientations to try based on grain direction
+    const tryNormal = grainDirection === 'any' || grainDirection === 'length'
+    const tryRotated = grainDirection === 'any' || grainDirection === 'width'
 
     for (const rect of freeRects) {
       // Calculate usable space in this rect
@@ -134,7 +142,8 @@ function createStripsForBoard(board, pieces, kerf) {
       const positionScore = rect.y * 1000 + rect.x
 
       // Try normal orientation: piece length along rect width, piece width along rect height
-      if (pieceLength <= usableWidth + 0.001 && pieceWidth <= usableHeight + 0.001) {
+      // This aligns piece length with board length (grain direction)
+      if (tryNormal && pieceLength <= usableWidth + 0.001 && pieceWidth <= usableHeight + 0.001) {
         // Best Short Side Fit: minimize leftover on shorter edge
         const leftoverWidth = usableWidth - pieceLength
         const leftoverHeight = usableHeight - pieceWidth
@@ -154,7 +163,8 @@ function createStripsForBoard(board, pieces, kerf) {
       }
 
       // Try rotated: piece width along rect width, piece length along rect height
-      if (pieceWidth <= usableWidth + 0.001 && pieceLength <= usableHeight + 0.001) {
+      // This aligns piece length with board width (cross grain)
+      if (tryRotated && pieceWidth <= usableWidth + 0.001 && pieceLength <= usableHeight + 0.001) {
         const leftoverWidth = usableWidth - pieceWidth
         const leftoverHeight = usableHeight - pieceLength
         const shortSide = Math.min(leftoverWidth, leftoverHeight)
@@ -355,8 +365,9 @@ function createStripsForBoard(board, pieces, kerf) {
 
     const pl = piece.effectiveLength
     const pw = piece.effectiveWidth
+    const grainDir = piece.grainDirection || 'any'
 
-    const fit = findBestFit(pl, pw)
+    const fit = findBestFit(pl, pw, grainDir)
     if (fit) {
       const { rect, rotated } = fit
       const placedLength = rotated ? pw : pl
