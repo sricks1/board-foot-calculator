@@ -8,15 +8,23 @@ A web application for woodworkers to calculate lumber requirements, plan cuts, a
 
 ## Features
 
+### Lumber Mode
 - **Project Management**: Create and manage multiple woodworking projects
 - **Cut List**: Define all pieces needed for your project with dimensions, thickness, species, and quantities
 - **Calculate Stock Needed**: Automatically determine how many boards to buy based on your cut list
-- **Cut Plan Optimizer**: Generate optimized cutting layouts using strip-based guillotine cutting
+- **Cut Plan Optimizer**: Generate optimized cutting layouts using 2D bin packing
 - **Visual Diagrams**: SVG-based cut plan visualization showing piece placement on boards
 - **Estimated Pricing**: Material cost estimates with editable prices per board foot
 - **PDF Export**: Generate professional documents with tables and visual cut diagrams
 - **Cloud Sync**: User accounts with Supabase - access your projects from any device
-- **Species Support**: Track wood species for accurate grouping and pricing
+- **Species Support**: 60+ wood species with automatic cost estimation
+
+### Sheet Goods Mode
+- **Standard Sheet Sizes**: 4×8 (standard), 5×5 (Baltic Birch), 4×4, or custom dimensions
+- **Product Types**: Baltic Birch, MDF, plywood (Birch, Maple, Oak, Walnut, Cherry), Melamine
+- **Grain Direction Constraints**: Any, With Grain, or Cross Grain placement
+- **Per-Sheet Pricing**: Cost calculation by sheet count instead of board feet
+- **Visual Cut Plans**: See exactly where each piece is placed on each sheet
 
 ---
 
@@ -31,7 +39,11 @@ A web application for woodworkers to calculate lumber requirements, plan cuts, a
    - **Calculate Stock Workflow** (recommended): Start with cut pieces, then calculate what lumber to buy
    - **Manual Stock Entry**: Enter your existing lumber inventory manually
 
-### The Three Tabs
+### Material Modes
+
+Toggle between **Lumber** and **Sheet Goods** modes at the top of the screen. Each mode has its own tabs and workflow.
+
+### Lumber Mode: Three Tabs
 
 Navigate between **Cut List**, **Stock Boards**, and **Cut Plan** tabs at any time.
 
@@ -145,6 +157,66 @@ The optimizer accounts for realistic woodworking conditions:
 
 ---
 
+## Sheet Goods Mode
+
+### Switching Modes
+
+Click the **Sheet Goods** button at the top of the screen to switch from Lumber mode.
+
+### Sheet Goods: Three Tabs
+
+Navigate between **Sheets**, **Cut List**, and **Cut Plan** tabs.
+
+---
+
+### Tab 1: Sheets (Stock)
+
+Define your sheet goods inventory:
+
+| Field | Description |
+|-------|-------------|
+| Product Type | Baltic Birch, MDF, Plywood species, Melamine, etc. |
+| Thickness | Direct inches: 1/4", 1/2", 3/4", 1" |
+| Size | Standard 4×8, 5×5 (Baltic Birch), 4×4, or Custom |
+| Quantity | Number of sheets available |
+| Price/Sheet | Optional - cost per sheet for estimates |
+
+---
+
+### Tab 2: Cut List (Sheet Goods)
+
+Define pieces to cut from sheet goods:
+
+| Field | Description |
+|-------|-------------|
+| Piece Name | Descriptive name (e.g., "Cabinet Side", "Shelf") |
+| Length | Length in inches |
+| Width | Width in inches |
+| Thickness | Must match available sheet thickness |
+| Product Type | Must match available sheet product |
+| Quantity | How many pieces needed |
+| Grain Direction | How the piece should be oriented |
+
+**Grain Direction Options:**
+- **Any Direction**: Optimizer can rotate the piece freely for best fit
+- **With Grain**: Piece length aligns with sheet length (8' direction on standard sheets)
+- **Cross Grain**: Piece length aligns with sheet width (4' direction on standard sheets)
+
+*Note: Grain runs along the long side of standard sheets.*
+
+---
+
+### Tab 3: Cut Plan (Sheet Goods)
+
+Generate optimized cutting layouts:
+
+1. Click **"Generate Cut Plan"**
+2. View efficiency statistics and waste percentage
+3. Visual diagrams show piece placement on each sheet
+4. Pieces with grain constraints show their orientation
+
+---
+
 ## Formulas
 
 ### Board Feet
@@ -176,6 +248,8 @@ Board Feet = (Thickness × Width × Length) / 144
 | Missing price | Enter a custom price in the $/BF field |
 | Login issues | Check email confirmation; use "Forgot Password" if needed |
 | Sync error | Check internet connection; data syncs automatically when restored |
+| Grain direction ignored | Only applies to sheet goods mode; lumber pieces can always rotate |
+| Sheet pieces not rotating | Check grain direction setting - "With Grain" prevents rotation |
 
 ---
 
@@ -185,8 +259,8 @@ Board Feet = (Thickness × Width × Length) / 144
 
 | Technology | Purpose |
 |------------|---------|
-| React 18 | UI framework |
-| Vite | Build tool |
+| React 19 | UI framework |
+| Vite 7 | Build tool |
 | Supabase | Authentication & Database |
 | jsPDF | PDF generation |
 | CSS3 | Styling with custom properties |
@@ -195,26 +269,115 @@ Board Feet = (Thickness × Width × Length) / 144
 
 ```
 src/
-├── App.jsx           # Main application component
+├── App.jsx           # Main application (~4000 lines)
+│                     # All UI components inline:
+│                     #   - BoardForm, BoardItem
+│                     #   - CutPieceForm, CutPieceItem
+│                     #   - SheetGoodsForm, SheetGoodsItem
+│                     #   - SheetCutPieceForm, SheetCutPieceItem
+│                     #   - CutPlanBoard, CutPlanStrip
+│                     #   - ConfirmDialog, WorkflowIndicator
 ├── App.css           # Application styles
 ├── Auth.jsx          # Authentication component
 ├── supabaseClient.js # Supabase configuration
-├── cutOptimizer.js   # Cut optimization algorithm
-├── lumberPrices.js   # Lumber price database
+├── cutOptimizer.js   # 2D bin packing algorithm
+├── lumberPrices.js   # Lumber price database (60+ species)
 ├── pdfExport.js      # PDF generation
 ├── main.jsx          # React entry point
 └── index.css         # Global styles & CSS variables
 ```
 
+### Data Model
+
+#### Lumber Mode
+
+**Stock Board**
+```javascript
+{
+  id: string,
+  species: string,          // e.g., "Walnut", "Cherry"
+  thickness: string,        // Lumber notation: "4/4", "5/4", "6/4", "8/4"
+  length: number,           // inches
+  width: number,            // inches
+  quantity: number,
+  pricePerBF: number|null   // Auto-populated from price database
+}
+```
+
+**Cut Piece**
+```javascript
+{
+  id: string,
+  name: string,             // Description, e.g., "Table Top"
+  length: number,           // inches
+  width: number,            // inches
+  thickness: string,        // Must match available stock thickness
+  species: string,          // Must match available stock species
+  quantity: number
+}
+```
+
+#### Sheet Goods Mode
+
+**Sheet Stock**
+```javascript
+{
+  id: string,
+  productType: string,      // e.g., "Baltic Birch", "MDF"
+  thickness: string,        // Direct inches: "1/4", "1/2", "3/4", "1"
+  length: number,           // Default 96 (8 feet)
+  width: number,            // Default 48 (4 feet)
+  quantity: number,
+  pricePerSheet: number|null
+}
+```
+
+**Sheet Cut Piece**
+```javascript
+{
+  id: string,
+  name: string,
+  length: number,
+  width: number,
+  thickness: string,
+  productType: string,
+  quantity: number,
+  grainDirection: 'any'|'length'|'width'
+}
+```
+
 ### Cut Optimization Algorithm
 
-The optimizer uses **strip-based guillotine cutting**, which mirrors real woodworking:
+The optimizer uses **2D bin packing** with maximal rectangles, which efficiently places pieces on boards:
 
-1. **Group** stock boards and cut pieces by thickness AND species
-2. **Rip cuts** (lengthwise) divide boards into strips
-3. **Crosscuts** divide strips into individual pieces
-4. Pieces of the same width are grouped for efficient ripping
-5. Accounts for **1/8" saw kerf** between cuts and at rough edges
+1. **Sorting**: Pieces sorted by area (largest first), then by longest dimension
+2. **Free Rectangle Tracking**: Maintains list of available rectangular spaces on each board
+3. **Best Short Side Fit (BSSF)**: Places pieces where they minimize leftover on the shorter edge
+4. **Edge Kerf Handling**: Accounts for jointing rough edges (1/4" kerf on rough lumber edges)
+5. **Grain Direction** (sheet goods only):
+   - `any`: Optimizer can rotate pieces freely
+   - `length`: Piece length must align with board/sheet length (no rotation)
+   - `width`: Piece length must align with board/sheet width (force rotation)
+
+#### Key Functions in `cutOptimizer.js`
+
+| Function | Purpose |
+|----------|---------|
+| `optimizeCuts()` | Main entry point - orchestrates multi-board optimization |
+| `createStripsForBoard()` | Packs pieces onto a single board using BSSF heuristic |
+| `findBestFit()` | Locates optimal position for a piece, respecting grain constraints |
+| `groupByBoardDimensions()` | Groups pieces by compatible stock dimensions |
+
+#### Algorithm Flow
+
+```
+optimizeCuts(boards, pieces)
+  ├── Group pieces by thickness + species
+  ├── For each group:
+  │     ├── Binary search for minimum board count
+  │     └── createStripsForBoard() for each board
+  └── Return placements + statistics
+```
 
 ### Brand Colors
 
