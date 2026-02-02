@@ -817,7 +817,7 @@ function tryBoardDistribution(cutPieces, templates, totalBoards, kerf) {
     if (testBoards.length === 0) continue
 
     // Test this distribution
-    const cutPlan = optimizeCuts(testBoards, cutPieces, kerf)
+    const cutPlan = optimizeCuts(testBoards, fittablePieces, kerf)
 
     if (cutPlan.unplacedPieces.length === 0) {
       // All pieces fit - check if this is better than previous results
@@ -867,7 +867,26 @@ function calculateStockForSingleTemplate(cutPieces, stockTemplate, kerf) {
     return { boardsNeeded: 0, boards: [], cutPlan: null }
   }
 
-  const totalCutBF = calculateCutPiecesBF(cutPieces)
+  // Filter out pieces that can physically never fit on this template
+  // A piece fits if it can be placed in either orientation within the board dimensions
+  // (accounting for edge kerf on two sides)
+  const usableLength = stockTemplate.length - kerf
+  const usableWidth = stockTemplate.width - kerf
+  const fittablePieces = cutPieces.filter(piece => {
+    const pl = piece.length
+    const pw = piece.width
+    // Normal orientation: piece length along board length, piece width along board width
+    const fitsNormal = pl <= usableLength + 0.001 && pw <= usableWidth + 0.001
+    // Rotated: piece width along board length, piece length along board width
+    const fitsRotated = pw <= usableLength + 0.001 && pl <= usableWidth + 0.001
+    return fitsNormal || fitsRotated
+  })
+
+  if (fittablePieces.length === 0) {
+    return { boardsNeeded: 0, boards: [], cutPlan: null }
+  }
+
+  const totalCutBF = calculateCutPiecesBF(fittablePieces)
   const templateThickness = parseThickness(stockTemplate.thickness) || 1
   const templateBF = (stockTemplate.length * stockTemplate.width * templateThickness) / 144
   const estimatedBoards = Math.max(1, Math.ceil((totalCutBF * 1.2) / templateBF))
@@ -894,7 +913,7 @@ function calculateStockForSingleTemplate(cutPieces, stockTemplate, kerf) {
       })
     }
 
-    const cutPlan = optimizeCuts(testBoards, cutPieces, kerf)
+    const cutPlan = optimizeCuts(testBoards, fittablePieces, kerf)
 
     if (cutPlan.unplacedPieces.length === 0) {
       result = {
@@ -924,7 +943,7 @@ function calculateStockForSingleTemplate(cutPieces, stockTemplate, kerf) {
         boardFeet: templateBF
       })
     }
-    const cutPlan = optimizeCuts(testBoards, cutPieces, kerf)
+    const cutPlan = optimizeCuts(testBoards, fittablePieces, kerf)
     result = {
       boardsNeeded: high + 1,
       boards: testBoards,
