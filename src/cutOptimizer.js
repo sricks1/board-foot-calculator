@@ -725,12 +725,27 @@ export function calculateStockNeeded(cutPieces, stockTemplates, kerf = DEFAULT_K
     }
   }
 
-  // Generate final cut plan with all boards
+  // Generate final cut plan with all individual boards (optimizer needs them expanded)
   const finalCutPlan = optimizeCuts(allBoards, cutPieces, kerf)
 
+  // Consolidate identical boards into single entries with quantity
+  const consolidatedBoards = []
+  const boardMap = new Map()
+  allBoards.forEach(board => {
+    const key = `${board.length}|${board.width}|${board.thickness}|${board.species || ''}`
+    if (boardMap.has(key)) {
+      boardMap.get(key).quantity += 1
+      boardMap.get(key).boardFeet += board.boardFeet
+    } else {
+      const consolidated = { ...board, quantity: 1, boardFeetPerPiece: board.boardFeet }
+      boardMap.set(key, consolidated)
+      consolidatedBoards.push(consolidated)
+    }
+  })
+
   return {
-    boardsNeeded: allBoards.length,
-    boards: allBoards,
+    boardsNeeded: consolidatedBoards.reduce((sum, b) => sum + b.quantity, 0),
+    boards: consolidatedBoards,
     cutPlan: finalCutPlan,
     boardsByTemplate: allBoardsByTemplate
   }
