@@ -2822,23 +2822,26 @@ function App() {
       // Only query if there are projects
       let boardsData = []
       let cutPiecesData = []
+      let sheetGoodsData = []
+      let sheetCutPiecesData = []
 
       if (projectIds.length > 0) {
-        const { data: boards, error: boardsError } = await supabase
-          .from('boards')
-          .select('*')
-          .in('project_id', projectIds)
+        const [boardsResult, cutPiecesResult, sheetGoodsResult, sheetCutPiecesResult] = await Promise.all([
+          supabase.from('boards').select('*').in('project_id', projectIds),
+          supabase.from('cut_pieces').select('*').in('project_id', projectIds),
+          supabase.from('sheet_goods').select('*').in('project_id', projectIds),
+          supabase.from('sheet_cut_pieces').select('*').in('project_id', projectIds)
+        ])
 
-        if (boardsError) throw boardsError
-        boardsData = boards || []
+        if (boardsResult.error) throw boardsResult.error
+        if (cutPiecesResult.error) throw cutPiecesResult.error
+        if (sheetGoodsResult.error) throw sheetGoodsResult.error
+        if (sheetCutPiecesResult.error) throw sheetCutPiecesResult.error
 
-        const { data: cutPieces, error: cutPiecesError } = await supabase
-          .from('cut_pieces')
-          .select('*')
-          .in('project_id', projectIds)
-
-        if (cutPiecesError) throw cutPiecesError
-        cutPiecesData = cutPieces || []
+        boardsData = boardsResult.data || []
+        cutPiecesData = cutPiecesResult.data || []
+        sheetGoodsData = sheetGoodsResult.data || []
+        sheetCutPiecesData = sheetCutPiecesResult.data || []
       }
 
       // Combine data into project objects
@@ -2874,7 +2877,32 @@ function App() {
             thickness: c.thickness,
             species: c.species,
             quantity: c.quantity
-          }))
+          })),
+        sheetGoods: sheetGoodsData
+          .filter(s => s.project_id === project.id)
+          .map(s => ({
+            id: s.id,
+            name: s.name,
+            product: s.product_type,
+            thickness: s.thickness,
+            length: Number(s.length),
+            width: Number(s.width),
+            quantity: s.quantity,
+            pricePerSheet: s.price_per_sheet ? Number(s.price_per_sheet) : null
+          })),
+        sheetCutPieces: sheetCutPiecesData
+          .filter(sp => sp.project_id === project.id)
+          .map(sp => ({
+            id: sp.id,
+            name: sp.name,
+            length: Number(sp.length),
+            width: Number(sp.width),
+            thickness: sp.thickness,
+            product: sp.product_type,
+            quantity: sp.quantity,
+            grainDirection: sp.grain_direction || 'any'
+          })),
+        sheetCutPlan: project.sheet_cut_plan
       }))
 
       setProjects(fullProjects)
@@ -3069,9 +3097,12 @@ function App() {
         workflow: data.workflow,
         quantity: data.quantity || 1,
         cutPlan: null,
+        sheetCutPlan: null,
         createdAt: data.created_at,
         boards: [],
-        cutPieces: []
+        cutPieces: [],
+        sheetGoods: [],
+        sheetCutPieces: []
       }
 
       setProjects([newProject, ...projects])
@@ -3546,75 +3577,245 @@ function App() {
     setDragOverCutPieceId(null)
   }
 
-  // Sheet goods handlers (local state for now - can add Supabase persistence later)
-  const handleAddSheetGoods = (sheet) => {
-    const sheetGoods = currentProject.sheetGoods || []
-    const newSheet = { ...sheet, id: Date.now() }
-    const updatedProject = {
-      ...currentProject,
-      sheetGoods: [...sheetGoods, newSheet],
-      sheetCutPlan: null
+  // Sheet goods handlers (Supabase-backed)
+  const handleAddSheetGoods = async (sheet) => {
+    setSyncStatus('syncing')
+    try {
+      const { data, error } = await supabase
+        .from('sheet_goods')
+        .insert({
+          project_id: currentProject.id,
+          name: sheet.name,
+          product_type: sheet.product,
+          thickness: sheet.thickness,
+          length: sheet.length,
+          width: sheet.width,
+          quantity: sheet.quantity,
+          price_per_sheet: sheet.pricePerSheet
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      const newSheet = {
+        id: data.id,
+        name: data.name,
+        product: data.product_type,
+        thickness: data.thickness,
+        length: Number(data.length),
+        width: Number(data.width),
+        quantity: data.quantity,
+        pricePerSheet: data.price_per_sheet ? Number(data.price_per_sheet) : null
+      }
+
+      const updatedProject = {
+        ...currentProject,
+        sheetGoods: [...(currentProject.sheetGoods || []), newSheet],
+        sheetCutPlan: null
+      }
+      setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+      setCurrentProject(updatedProject)
+
+      await supabase
+        .from('projects')
+        .update({ sheet_cut_plan: null })
+        .eq('id', currentProject.id)
+
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error adding sheet goods:', error)
+      setSyncStatus('error')
     }
-    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
-    setCurrentProject(updatedProject)
   }
 
-  const handleUpdateSheetGoods = (updatedSheet) => {
-    const sheetGoods = currentProject.sheetGoods || []
-    const updatedProject = {
-      ...currentProject,
-      sheetGoods: sheetGoods.map(s => s.id === updatedSheet.id ? updatedSheet : s),
-      sheetCutPlan: null
+  const handleUpdateSheetGoods = async (updatedSheet) => {
+    setSyncStatus('syncing')
+    try {
+      const { error } = await supabase
+        .from('sheet_goods')
+        .update({
+          name: updatedSheet.name,
+          product_type: updatedSheet.product,
+          thickness: updatedSheet.thickness,
+          length: updatedSheet.length,
+          width: updatedSheet.width,
+          quantity: updatedSheet.quantity,
+          price_per_sheet: updatedSheet.pricePerSheet
+        })
+        .eq('id', updatedSheet.id)
+
+      if (error) throw error
+
+      const updatedProject = {
+        ...currentProject,
+        sheetGoods: (currentProject.sheetGoods || []).map(s => s.id === updatedSheet.id ? updatedSheet : s),
+        sheetCutPlan: null
+      }
+      setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+      setCurrentProject(updatedProject)
+      setEditingSheetGoods(null)
+
+      await supabase
+        .from('projects')
+        .update({ sheet_cut_plan: null })
+        .eq('id', currentProject.id)
+
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error updating sheet goods:', error)
+      setSyncStatus('error')
     }
-    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
-    setCurrentProject(updatedProject)
-    setEditingSheetGoods(null)
   }
 
-  const handleDeleteSheetGoods = (sheetId) => {
-    const sheetGoods = currentProject.sheetGoods || []
-    const updatedProject = {
-      ...currentProject,
-      sheetGoods: sheetGoods.filter(s => s.id !== sheetId),
-      sheetCutPlan: null
+  const handleDeleteSheetGoods = async (sheetId) => {
+    setSyncStatus('syncing')
+    try {
+      const { error } = await supabase
+        .from('sheet_goods')
+        .delete()
+        .eq('id', sheetId)
+
+      if (error) throw error
+
+      const updatedProject = {
+        ...currentProject,
+        sheetGoods: (currentProject.sheetGoods || []).filter(s => s.id !== sheetId),
+        sheetCutPlan: null
+      }
+      setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+      setCurrentProject(updatedProject)
+
+      await supabase
+        .from('projects')
+        .update({ sheet_cut_plan: null })
+        .eq('id', currentProject.id)
+
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error deleting sheet goods:', error)
+      setSyncStatus('error')
     }
-    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
-    setCurrentProject(updatedProject)
   }
 
-  const handleAddSheetCutPiece = (piece) => {
-    const sheetCutPieces = currentProject.sheetCutPieces || []
-    const newPiece = { ...piece, id: Date.now() }
-    const updatedProject = {
-      ...currentProject,
-      sheetCutPieces: [...sheetCutPieces, newPiece],
-      sheetCutPlan: null
+  const handleAddSheetCutPiece = async (piece) => {
+    setSyncStatus('syncing')
+    try {
+      const { data, error } = await supabase
+        .from('sheet_cut_pieces')
+        .insert({
+          project_id: currentProject.id,
+          name: piece.name,
+          length: piece.length,
+          width: piece.width,
+          thickness: piece.thickness,
+          product_type: piece.product,
+          quantity: piece.quantity,
+          grain_direction: piece.grainDirection || 'any'
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      const newPiece = {
+        id: data.id,
+        name: data.name,
+        length: Number(data.length),
+        width: Number(data.width),
+        thickness: data.thickness,
+        product: data.product_type,
+        quantity: data.quantity,
+        grainDirection: data.grain_direction
+      }
+
+      const updatedProject = {
+        ...currentProject,
+        sheetCutPieces: [...(currentProject.sheetCutPieces || []), newPiece],
+        sheetCutPlan: null
+      }
+      setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+      setCurrentProject(updatedProject)
+
+      await supabase
+        .from('projects')
+        .update({ sheet_cut_plan: null })
+        .eq('id', currentProject.id)
+
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error adding sheet cut piece:', error)
+      setSyncStatus('error')
     }
-    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
-    setCurrentProject(updatedProject)
   }
 
-  const handleUpdateSheetCutPiece = (updatedPiece) => {
-    const sheetCutPieces = currentProject.sheetCutPieces || []
-    const updatedProject = {
-      ...currentProject,
-      sheetCutPieces: sheetCutPieces.map(p => p.id === updatedPiece.id ? updatedPiece : p),
-      sheetCutPlan: null
+  const handleUpdateSheetCutPiece = async (updatedPiece) => {
+    setSyncStatus('syncing')
+    try {
+      const { error } = await supabase
+        .from('sheet_cut_pieces')
+        .update({
+          name: updatedPiece.name,
+          length: updatedPiece.length,
+          width: updatedPiece.width,
+          thickness: updatedPiece.thickness,
+          product_type: updatedPiece.product,
+          quantity: updatedPiece.quantity,
+          grain_direction: updatedPiece.grainDirection || 'any'
+        })
+        .eq('id', updatedPiece.id)
+
+      if (error) throw error
+
+      const updatedProject = {
+        ...currentProject,
+        sheetCutPieces: (currentProject.sheetCutPieces || []).map(p => p.id === updatedPiece.id ? updatedPiece : p),
+        sheetCutPlan: null
+      }
+      setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+      setCurrentProject(updatedProject)
+      setEditingSheetCutPiece(null)
+
+      await supabase
+        .from('projects')
+        .update({ sheet_cut_plan: null })
+        .eq('id', currentProject.id)
+
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error updating sheet cut piece:', error)
+      setSyncStatus('error')
     }
-    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
-    setCurrentProject(updatedProject)
-    setEditingSheetCutPiece(null)
   }
 
-  const handleDeleteSheetCutPiece = (pieceId) => {
-    const sheetCutPieces = currentProject.sheetCutPieces || []
-    const updatedProject = {
-      ...currentProject,
-      sheetCutPieces: sheetCutPieces.filter(p => p.id !== pieceId),
-      sheetCutPlan: null
+  const handleDeleteSheetCutPiece = async (pieceId) => {
+    setSyncStatus('syncing')
+    try {
+      const { error } = await supabase
+        .from('sheet_cut_pieces')
+        .delete()
+        .eq('id', pieceId)
+
+      if (error) throw error
+
+      const updatedProject = {
+        ...currentProject,
+        sheetCutPieces: (currentProject.sheetCutPieces || []).filter(p => p.id !== pieceId),
+        sheetCutPlan: null
+      }
+      setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+      setCurrentProject(updatedProject)
+
+      await supabase
+        .from('projects')
+        .update({ sheet_cut_plan: null })
+        .eq('id', currentProject.id)
+
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error deleting sheet cut piece:', error)
+      setSyncStatus('error')
     }
-    setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
-    setCurrentProject(updatedProject)
   }
 
   // Sheet goods drag handlers
@@ -3771,7 +3972,23 @@ function App() {
     setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
     setCurrentProject(updatedProject)
     setActiveTab('sheetPlan')
-    setIsRegenerating(false)
+
+    // Save sheet cut plan to database
+    setSyncStatus('syncing')
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({ sheet_cut_plan: cutPlan })
+        .eq('id', currentProject.id)
+
+      if (error) throw error
+      setSyncStatus('synced')
+    } catch (error) {
+      console.error('Error saving sheet cut plan:', error)
+      setSyncStatus('error')
+    } finally {
+      setIsRegenerating(false)
+    }
   }
 
   // Generate cut plan
@@ -4100,12 +4317,22 @@ function App() {
                 onClick={() => setMaterialType('lumber')}
               >
                 🪵 Lumber
+                {((currentProject?.boards?.length || 0) + (currentProject?.cutPieces?.length || 0)) > 0 && (
+                  <span className="material-badge">
+                    {(currentProject.boards?.length || 0) + (currentProject.cutPieces?.length || 0)}
+                  </span>
+                )}
               </button>
               <button
                 className={`material-type-btn ${materialType === 'sheet' ? 'active' : ''}`}
                 onClick={() => setMaterialType('sheet')}
               >
                 📦 Sheet Goods
+                {((currentProject?.sheetGoods?.length || 0) + (currentProject?.sheetCutPieces?.length || 0)) > 0 && (
+                  <span className="material-badge">
+                    {(currentProject.sheetGoods?.length || 0) + (currentProject.sheetCutPieces?.length || 0)}
+                  </span>
+                )}
               </button>
             </div>
 

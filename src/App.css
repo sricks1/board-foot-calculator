@@ -3812,6 +3812,26 @@ header::after {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
+.material-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  margin-left: 4px;
+  background-color: var(--craftsman-orange);
+  color: white;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.material-type-btn:not(.active) .material-badge {
+  background-color: #999;
+  color: white;
+}
+
 /* Sheet Goods Form */
 .sheet-goods-form,
 .sheet-cut-piece-form {
