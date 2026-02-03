@@ -2075,6 +2075,11 @@ button:disabled {
   margin-top: 0;
 }
 
+.summary-divider {
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  margin: 1rem 0 0.5rem;
+}
+
 /* Responsive */
 @media (max-width: 900px) {
   .project-content {

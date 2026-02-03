@@ -1676,7 +1676,8 @@ function CutPlanBoard({ assignment, scale }) {
 }
 
 // Cut Plan Display Component
-function CutPlanDisplay({ cutPlan, boards, onRegenerate, isRegenerating, workflowType }) {
+function CutPlanDisplay({ cutPlan, boards, onRegenerate, isRegenerating, workflowType, materialType }) {
+  const isSheet = materialType === 'sheet'
   // State for custom price overrides (keyed by item index)
   const [customPrices, setCustomPrices] = useState({})
 
@@ -1807,11 +1808,11 @@ function CutPlanDisplay({ cutPlan, boards, onRegenerate, isRegenerating, workflo
         </div>
         <div className={`cut-plan-stat ${cutPlan.waste <= 1 ? 'stat-good' : cutPlan.waste <= 3 ? 'stat-moderate' : 'stat-poor'}`}>
           <span className="stat-value">{cutPlan.waste.toFixed(2)}</span>
-          <span className="stat-label">Waste (BF)</span>
+          <span className="stat-label">{isSheet ? 'Waste (sq ft)' : 'Waste (BF)'}</span>
         </div>
         <div className="cut-plan-stat">
           <span className="stat-value">{cutPlan.boardsUsed}/{cutPlan.totalStockBoards}</span>
-          <span className="stat-label">Boards Used</span>
+          <span className="stat-label">{isSheet ? 'Sheets Used' : 'Boards Used'}</span>
         </div>
         {pricing && pricing.totalCost > 0 && (
           <div className="cut-plan-stat stat-highlight">
@@ -1845,16 +1846,16 @@ function CutPlanDisplay({ cutPlan, boards, onRegenerate, isRegenerating, workflo
           <h4>Estimated Material Cost</h4>
           {pricing.isUsedOnly && (
             <p className="pricing-context">
-              Showing cost for <strong>{pricing.boardsUsed} of {pricing.totalBoards}</strong> boards used in this cut plan.
+              Showing cost for <strong>{pricing.boardsUsed} of {pricing.totalBoards}</strong> {isSheet ? 'sheets' : 'boards'} used in this cut plan.
             </p>
           )}
           <table className="pricing-table">
             <thead>
               <tr>
                 <th>Qty</th>
-                <th>Board</th>
-                <th>BF</th>
-                <th>$/BF</th>
+                <th>{isSheet ? 'Sheet' : 'Board'}</th>
+                <th>{isSheet ? 'Sq Ft' : 'BF'}</th>
+                <th>{isSheet ? '$/Sheet' : '$/BF'}</th>
                 <th>Cost</th>
               </tr>
             </thead>
@@ -1865,11 +1866,11 @@ function CutPlanDisplay({ cutPlan, boards, onRegenerate, isRegenerating, workflo
                   <td className="desc-col">
                     {item.length}" × {item.width}"
                     <span className="breakdown-details">
-                      {item.thickness}
+                      {item.thickness}{isSheet ? '"' : ''}
                       {item.species && ` • ${item.species}`}
                     </span>
                   </td>
-                  <td className="bf-col">{item.totalBF.toFixed(1)}</td>
+                  <td className="bf-col">{isSheet ? ((item.length * item.width) / 144 * item.count).toFixed(1) : item.totalBF.toFixed(1)}</td>
                   <td className="price-col">
                     <div className="price-input-wrapper">
                       <span className="price-symbol">$</span>
@@ -2008,6 +2009,81 @@ function ProjectSummary({ project }) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Sheet Goods Summary */}
+      {(project.sheetGoods?.length > 0 || project.sheetCutPieces?.length > 0) && (
+        <>
+          <div className="summary-divider" />
+
+          {project.sheetGoods?.length > 0 && (
+            <>
+              <div className="summary-section-label">Sheet Stock</div>
+              <div className="summary-stats">
+                <div className="stat">
+                  <span className="stat-value">{project.sheetGoods.reduce((sum, s) => sum + (s.quantity || 1), 0)}</span>
+                  <span className="stat-label">Sheets</span>
+                </div>
+                <div className="stat">
+                  <span className="stat-value">{project.sheetGoods.reduce((sum, s) => sum + ((s.sqFtPerSheet || (s.length * s.width) / 144) * (s.quantity || 1)), 0).toFixed(1)}</span>
+                  <span className="stat-label">Sq Ft</span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {project.sheetCutPieces?.length > 0 && (
+            <>
+              <div className="summary-section-label">Sheet Cut List</div>
+              <div className="summary-stats">
+                <div className="stat">
+                  <span className="stat-value">{project.sheetCutPieces.reduce((sum, p) => sum + (p.quantity || 1), 0)}</span>
+                  <span className="stat-label">Pieces</span>
+                </div>
+                <div className="stat">
+                  <span className="stat-value">{project.sheetCutPieces.reduce((sum, p) => sum + ((p.length * p.width) / 144 * (p.quantity || 1)), 0).toFixed(1)}</span>
+                  <span className="stat-label">Sq Ft</span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {project.sheetCutPlan && (
+            <>
+              <div className="summary-section-label">Sheet Cut Plan</div>
+              <div className="summary-stats">
+                <div className="stat total">
+                  <span className="stat-value">{project.sheetCutPlan.efficiency.toFixed(0)}%</span>
+                  <span className="stat-label">Efficiency</span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {project.sheetGoods?.length > 0 && (
+            <div className="board-list-summary">
+              <h4>Sheet Stock List</h4>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Dims</th>
+                    <th>Qty</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {project.sheetGoods.map(sheet => (
+                    <tr key={sheet.id}>
+                      <td>{sheet.name || `${sheet.product} ${sheet.thickness}"`}</td>
+                      <td>{sheet.length}"×{sheet.width}"</td>
+                      <td>{sheet.quantity || 1}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -2453,9 +2529,42 @@ function PurchaseOrderModal({ isOpen, onClose, project, boards, userProfile }) {
     })
   }
 
+  // Group sheet goods by product + thickness + dimensions
+  const getSheetShoppingList = () => {
+    const sheets = project.sheetGoods || []
+    if (sheets.length === 0) return []
+
+    const grouped = {}
+    sheets.forEach(sheet => {
+      const key = `${sheet.product}|${sheet.thickness}|${sheet.length}|${sheet.width}`
+      if (!grouped[key]) {
+        grouped[key] = {
+          product: sheet.product,
+          thickness: sheet.thickness,
+          length: sheet.length,
+          width: sheet.width,
+          count: 0,
+          totalSqFt: 0,
+          pricePerSheet: sheet.pricePerSheet
+        }
+      }
+      const qty = sheet.quantity || 1
+      grouped[key].count += qty
+      grouped[key].totalSqFt += (sheet.length * sheet.width) / 144 * qty
+    })
+
+    return Object.values(grouped).sort((a, b) => {
+      if (a.product !== b.product) return a.product.localeCompare(b.product)
+      return a.thickness.localeCompare(b.thickness)
+    })
+  }
+
   const shoppingList = getShoppingList()
+  const sheetList = getSheetShoppingList()
   const totalBF = shoppingList.reduce((sum, item) => sum + item.totalBF, 0)
   const totalPieces = shoppingList.reduce((sum, item) => sum + item.count, 0)
+  const totalSheets = sheetList.reduce((sum, item) => sum + item.count, 0)
+  const totalSheetSqFt = sheetList.reduce((sum, item) => sum + item.totalSqFt, 0)
   const today = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
@@ -2480,7 +2589,7 @@ function PurchaseOrderModal({ isOpen, onClose, project, boards, userProfile }) {
           <div className="po-header">
             <div className="po-header-row">
               <div className="po-title-section">
-                <h2>Lumber Purchase Order</h2>
+                <h2>{sheetList.length > 0 && shoppingList.length > 0 ? 'Material Purchase Order' : sheetList.length > 0 ? 'Sheet Goods Purchase Order' : 'Lumber Purchase Order'}</h2>
                 <div className="po-meta">
                   <p><strong>Project:</strong> {project.name}</p>
                   {project.quantity > 1 && <p><strong>Quantity:</strong> {project.quantity} items</p>}
@@ -2529,6 +2638,39 @@ function PurchaseOrderModal({ isOpen, onClose, project, boards, userProfile }) {
               </tr>
             </tfoot>
           </table>
+
+          {sheetList.length > 0 && (
+            <>
+              <h3 className="po-section-title" style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: '#324168', fontSize: '1rem' }}>Sheet Goods</h3>
+              <table className="po-table">
+                <thead>
+                  <tr>
+                    <th>Qty</th>
+                    <th>Product</th>
+                    <th>Dimensions</th>
+                    <th>Sq Ft</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sheetList.map((item, idx) => (
+                    <tr key={idx}>
+                      <td className="po-qty">{item.count}</td>
+                      <td className="po-species">{item.product} {item.thickness}"</td>
+                      <td className="po-dims">{item.length}" × {item.width}"</td>
+                      <td className="po-bf">{item.totalSqFt.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="po-total-row">
+                    <td className="po-qty"><strong>{totalSheets}</strong></td>
+                    <td colSpan="2"><strong>Total</strong></td>
+                    <td className="po-bf"><strong>{totalSheetSqFt.toFixed(1)} sq ft</strong></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </>
+          )}
 
           {project.description && (
             <div className="po-notes">
@@ -2888,7 +3030,8 @@ function App() {
             length: Number(s.length),
             width: Number(s.width),
             quantity: s.quantity,
-            pricePerSheet: s.price_per_sheet ? Number(s.price_per_sheet) : null
+            pricePerSheet: s.price_per_sheet ? Number(s.price_per_sheet) : null,
+            sqFtPerSheet: (Number(s.length) * Number(s.width)) / 144
           })),
         sheetCutPieces: sheetCutPiecesData
           .filter(sp => sp.project_id === project.id)
@@ -3606,7 +3749,8 @@ function App() {
         length: Number(data.length),
         width: Number(data.width),
         quantity: data.quantity,
-        pricePerSheet: data.price_per_sheet ? Number(data.price_per_sheet) : null
+        pricePerSheet: data.price_per_sheet ? Number(data.price_per_sheet) : null,
+        sqFtPerSheet: (Number(data.length) * Number(data.width)) / 144
       }
 
       const updatedProject = {
@@ -3649,7 +3793,7 @@ function App() {
 
       const updatedProject = {
         ...currentProject,
-        sheetGoods: (currentProject.sheetGoods || []).map(s => s.id === updatedSheet.id ? updatedSheet : s),
+        sheetGoods: (currentProject.sheetGoods || []).map(s => s.id === updatedSheet.id ? { ...updatedSheet, sqFtPerSheet: (Number(updatedSheet.length) * Number(updatedSheet.width)) / 144 } : s),
         sheetCutPlan: null
       }
       setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))

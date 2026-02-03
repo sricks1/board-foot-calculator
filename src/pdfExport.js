@@ -444,6 +444,260 @@ export function exportProjectToPDF(project) {
     })
   }
 
+  // Sheet Goods Section
+  const sheetGoods = project.sheetGoods || []
+  const sheetCutPieces = project.sheetCutPieces || []
+
+  if (sheetGoods.length > 0 || sheetCutPieces.length > 0) {
+    // Sheet Stock Section
+    checkPageBreak(60)
+    doc.setTextColor(...COLORS.slateBlue)
+    doc.setFontSize(16)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Sheet Stock', margin, y)
+    y += 20
+
+    if (sheetGoods.length > 0) {
+      // Table header
+      doc.setFillColor(...COLORS.skyBlue)
+      doc.rect(margin, y, contentWidth, 20, 'F')
+
+      doc.setTextColor(...COLORS.deepNavy)
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'bold')
+
+      const sheetCols = [margin + 5, margin + 150, margin + 280, margin + 350, margin + 420]
+      doc.text('Name', sheetCols[0], y + 14)
+      doc.text('Dimensions', sheetCols[1], y + 14)
+      doc.text('Thickness', sheetCols[2], y + 14)
+      doc.text('Qty', sheetCols[3], y + 14)
+      doc.text('Sq Ft', sheetCols[4], y + 14)
+      y += 20
+
+      doc.setFont('helvetica', 'normal')
+      let totalSqFt = 0
+      let totalSheets = 0
+
+      sheetGoods.forEach((sheet, idx) => {
+        checkPageBreak(20)
+
+        if (idx % 2 === 0) {
+          doc.setFillColor(250, 250, 250)
+          doc.rect(margin, y, contentWidth, 18, 'F')
+        }
+
+        const qty = sheet.quantity || 1
+        const sqFt = (sheet.length * sheet.width) / 144 * qty
+        totalSqFt += sqFt
+        totalSheets += qty
+
+        doc.setTextColor(...COLORS.charcoal)
+        doc.text(sheet.name || `${sheet.product} ${sheet.thickness}"`, sheetCols[0], y + 12)
+        doc.text(`${sheet.length}" × ${sheet.width}"`, sheetCols[1], y + 12)
+        doc.text(`${sheet.thickness}"`, sheetCols[2], y + 12)
+        doc.text(qty.toString(), sheetCols[3], y + 12)
+        doc.text(sqFt.toFixed(1), sheetCols[4], y + 12)
+        y += 18
+      })
+
+      // Totals row
+      doc.setFillColor(...COLORS.craftsmanOrange)
+      doc.rect(margin, y, contentWidth, 22, 'F')
+      doc.setTextColor(...COLORS.white)
+      doc.setFont('helvetica', 'bold')
+      doc.text('TOTAL', sheetCols[0], y + 15)
+      doc.text(`${totalSheets} sheets`, sheetCols[3], y + 15)
+      doc.text(`${totalSqFt.toFixed(1)} sq ft`, sheetCols[4], y + 15)
+      y += 35
+    }
+
+    // Sheet Cut List
+    if (sheetCutPieces.length > 0) {
+      checkPageBreak(60)
+      doc.setTextColor(...COLORS.slateBlue)
+      doc.setFontSize(16)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Sheet Cut List', margin, y)
+      y += 20
+
+      doc.setFillColor(...COLORS.skyBlue)
+      doc.rect(margin, y, contentWidth, 20, 'F')
+
+      doc.setTextColor(...COLORS.deepNavy)
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'bold')
+
+      const scCols = [margin + 5, margin + 130, margin + 250, margin + 320, margin + 380, margin + 440]
+      doc.text('Piece Name', scCols[0], y + 14)
+      doc.text('Dimensions', scCols[1], y + 14)
+      doc.text('Thickness', scCols[2], y + 14)
+      doc.text('Product', scCols[3], y + 14)
+      doc.text('Qty', scCols[4], y + 14)
+      doc.text('Sq Ft', scCols[5], y + 14)
+      y += 20
+
+      doc.setFont('helvetica', 'normal')
+      let totalCutSqFt = 0
+      let totalCutQty = 0
+
+      sheetCutPieces.forEach((piece, idx) => {
+        checkPageBreak(20)
+
+        if (idx % 2 === 0) {
+          doc.setFillColor(250, 250, 250)
+          doc.rect(margin, y, contentWidth, 18, 'F')
+        }
+
+        const qty = piece.quantity || 1
+        const sqFt = (piece.length * piece.width) / 144 * qty
+        totalCutSqFt += sqFt
+        totalCutQty += qty
+
+        doc.setTextColor(...COLORS.charcoal)
+        doc.text(piece.name || 'Unnamed', scCols[0], y + 12)
+        doc.text(`${piece.length}" × ${piece.width}"`, scCols[1], y + 12)
+        doc.text(`${piece.thickness}"`, scCols[2], y + 12)
+        doc.text(piece.product || '', scCols[3], y + 12)
+        doc.text(qty.toString(), scCols[4], y + 12)
+        doc.text(sqFt.toFixed(1), scCols[5], y + 12)
+        y += 18
+      })
+
+      // Totals row
+      doc.setFillColor(...COLORS.craftsmanOrange)
+      doc.rect(margin, y, contentWidth, 22, 'F')
+      doc.setTextColor(...COLORS.white)
+      doc.setFont('helvetica', 'bold')
+      doc.text('TOTAL', scCols[0], y + 15)
+      doc.text(`${totalCutQty} pcs`, scCols[4], y + 15)
+      doc.text(`${totalCutSqFt.toFixed(1)} sq ft`, scCols[5], y + 15)
+      y += 35
+    }
+
+    // Sheet Cut Plan
+    const sheetCutPlan = project.sheetCutPlan
+    if (sheetCutPlan && sheetCutPlan.assignments && sheetCutPlan.assignments.length > 0) {
+      checkPageBreak(80)
+
+      doc.setTextColor(...COLORS.slateBlue)
+      doc.setFontSize(16)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Sheet Cut Plan', margin, y)
+      y += 25
+
+      // Stats bar
+      doc.setFillColor(...COLORS.deepNavy)
+      doc.rect(margin, y, contentWidth, 35, 'F')
+
+      const statWidth = contentWidth / 3
+      doc.setTextColor(...COLORS.white)
+      doc.setFontSize(18)
+      doc.setFont('helvetica', 'bold')
+
+      doc.text(`${sheetCutPlan.efficiency.toFixed(1)}%`, margin + statWidth * 0.5, y + 15, { align: 'center' })
+      doc.text(`${sheetCutPlan.waste.toFixed(2)} sq ft`, margin + statWidth * 1.5, y + 15, { align: 'center' })
+      doc.text(`${sheetCutPlan.boardsUsed}/${sheetCutPlan.totalStockBoards}`, margin + statWidth * 2.5, y + 15, { align: 'center' })
+
+      doc.setFontSize(8)
+      doc.setFont('helvetica', 'normal')
+      doc.text('EFFICIENCY', margin + statWidth * 0.5, y + 28, { align: 'center' })
+      doc.text('WASTE', margin + statWidth * 1.5, y + 28, { align: 'center' })
+      doc.text('SHEETS USED', margin + statWidth * 2.5, y + 28, { align: 'center' })
+      y += 50
+
+      // Warnings
+      if (sheetCutPlan.warnings && sheetCutPlan.warnings.length > 0) {
+        sheetCutPlan.warnings.forEach(warning => {
+          checkPageBreak(25)
+          doc.setFillColor(255, 243, 205)
+          doc.rect(margin, y, contentWidth, 20, 'F')
+          doc.setDrawColor(255, 193, 7)
+          doc.rect(margin, y, contentWidth, 20, 'S')
+          doc.setTextColor(133, 100, 4)
+          doc.setFontSize(9)
+          doc.text(warning, margin + 10, y + 13)
+          y += 25
+        })
+      }
+
+      // Draw each sheet with cuts
+      sheetCutPlan.assignments.forEach((assignment, boardIdx) => {
+        const maxDiagramWidth = contentWidth
+        const maxDiagramHeight = 150
+        const scaleX = maxDiagramWidth / assignment.length
+        const scaleY = maxDiagramHeight / assignment.width
+        const scale = Math.min(scaleX, scaleY, 4)
+
+        const diagramWidth = assignment.length * scale
+        const diagramHeight = assignment.width * scale
+
+        checkPageBreak(diagramHeight + 50)
+
+        // Sheet label
+        doc.setTextColor(...COLORS.deepNavy)
+        doc.setFontSize(11)
+        doc.setFont('helvetica', 'bold')
+        let sheetLabel = assignment.stockBoardName || 'Sheet'
+        if (assignment.stockBoardIndex > 0) {
+          sheetLabel += ` (#${assignment.stockBoardIndex + 1})`
+        }
+        doc.text(sheetLabel, margin, y + 12)
+
+        doc.setFont('helvetica', 'normal')
+        doc.setTextColor(...COLORS.charcoal)
+        let sheetDims = ` - ${assignment.length}" × ${assignment.width}" × ${assignment.thickness}`
+        doc.text(sheetDims, margin + doc.getTextWidth(sheetLabel), y + 12)
+
+        if (assignment.species) {
+          const speciesX = margin + doc.getTextWidth(sheetLabel) + doc.getTextWidth(sheetDims) + 10
+          doc.setTextColor(...COLORS.charcoal)
+          doc.text(` ${assignment.species}`, speciesX, y + 12)
+        }
+        y += 20
+
+        // Sheet background
+        const diagramX = margin + (contentWidth - diagramWidth) / 2
+        doc.setFillColor(...COLORS.workshopCream)
+        doc.setDrawColor(...COLORS.charcoal)
+        doc.rect(diagramX, y, diagramWidth, diagramHeight, 'FD')
+
+        // Draw cuts
+        assignment.cuts.forEach((cut, cutIdx) => {
+          const cutX = diagramX + cut.x * scale
+          const cutY = y + cut.y * scale
+          const cutWidth = cut.length * scale
+          const cutHeight = cut.width * scale
+
+          const color = getCutColor(cut, cutIdx)
+          const textColor = getContrastColor(color)
+          doc.setFillColor(...color)
+          doc.setDrawColor(...COLORS.deepNavy)
+          doc.rect(cutX, cutY, cutWidth, cutHeight, 'FD')
+
+          if (cutWidth > 30 && cutHeight > 12) {
+            doc.setTextColor(...textColor)
+            doc.setFontSize(Math.min(9, cutHeight * 0.5))
+            doc.setFont('helvetica', 'bold')
+
+            let label = cut.cutPieceName
+            if (cut.cutPieceIndex > 0) {
+              label += ` #${cut.cutPieceIndex + 1}`
+            }
+
+            const maxLabelWidth = cutWidth - 6
+            while (doc.getTextWidth(label) > maxLabelWidth && label.length > 3) {
+              label = label.slice(0, -4) + '...'
+            }
+
+            doc.text(label, cutX + cutWidth / 2, cutY + cutHeight / 2 + 3, { align: 'center' })
+          }
+        })
+
+        y += diagramHeight + 20
+      })
+    }
+  }
+
   // Footer on last page
   const footerY = pageHeight - 25
   doc.setTextColor(...COLORS.charcoal)
