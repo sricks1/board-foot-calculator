@@ -1923,6 +1923,14 @@ function ProjectSummary({ project }) {
   const totalCutPiecesPerItem = cutPieces.reduce((sum, piece) => sum + (piece.quantity || 1), 0)
   const totalCutPieces = totalCutPiecesPerItem * projectQuantity
 
+  // Sheet goods computed values
+  const sheetGoods = project.sheetGoods || []
+  const sheetCutPiecesList = project.sheetCutPieces || []
+  const totalSheetCount = sheetGoods.reduce((sum, s) => sum + (s.quantity || 1), 0)
+  const totalSheetSqFt = sheetGoods.reduce((sum, s) => sum + ((s.length * s.width) / 144 * (s.quantity || 1)), 0)
+  const totalSheetCutPieces = sheetCutPiecesList.reduce((sum, p) => sum + (p.quantity || 1), 0)
+  const totalSheetCutSqFt = sheetCutPiecesList.reduce((sum, p) => sum + ((p.length * p.width) / 144 * (p.quantity || 1)), 0)
+
   // Calculate BF for multiplied quantities
   const multipliedCutPieces = projectQuantity > 1
     ? cutPieces.map(p => ({ ...p, quantity: (p.quantity || 1) * projectQuantity }))
@@ -2012,43 +2020,43 @@ function ProjectSummary({ project }) {
       )}
 
       {/* Sheet Goods Summary */}
-      {(project.sheetGoods?.length > 0 || project.sheetCutPieces?.length > 0) && (
+      {(sheetGoods.length > 0 || sheetCutPiecesList.length > 0) && (
         <>
           <div className="summary-divider" />
 
-          {project.sheetGoods?.length > 0 && (
+          {sheetGoods.length > 0 && (
             <>
               <div className="summary-section-label">Sheet Stock</div>
               <div className="summary-stats">
                 <div className="stat">
-                  <span className="stat-value">{project.sheetGoods.reduce((sum, s) => sum + (s.quantity || 1), 0)}</span>
+                  <span className="stat-value">{totalSheetCount}</span>
                   <span className="stat-label">Sheets</span>
                 </div>
                 <div className="stat">
-                  <span className="stat-value">{project.sheetGoods.reduce((sum, s) => sum + ((s.sqFtPerSheet || (s.length * s.width) / 144) * (s.quantity || 1)), 0).toFixed(1)}</span>
+                  <span className="stat-value">{totalSheetSqFt.toFixed(1)}</span>
                   <span className="stat-label">Sq Ft</span>
                 </div>
               </div>
             </>
           )}
 
-          {project.sheetCutPieces?.length > 0 && (
+          {sheetCutPiecesList.length > 0 && (
             <>
               <div className="summary-section-label">Sheet Cut List</div>
               <div className="summary-stats">
                 <div className="stat">
-                  <span className="stat-value">{project.sheetCutPieces.reduce((sum, p) => sum + (p.quantity || 1), 0)}</span>
+                  <span className="stat-value">{totalSheetCutPieces}</span>
                   <span className="stat-label">Pieces</span>
                 </div>
                 <div className="stat">
-                  <span className="stat-value">{project.sheetCutPieces.reduce((sum, p) => sum + ((p.length * p.width) / 144 * (p.quantity || 1)), 0).toFixed(1)}</span>
+                  <span className="stat-value">{totalSheetCutSqFt.toFixed(1)}</span>
                   <span className="stat-label">Sq Ft</span>
                 </div>
               </div>
             </>
           )}
 
-          {project.sheetCutPlan && (
+          {project.sheetCutPlan && sheetGoods.length > 0 && (
             <>
               <div className="summary-section-label">Sheet Cut Plan</div>
               <div className="summary-stats">
@@ -2060,7 +2068,7 @@ function ProjectSummary({ project }) {
             </>
           )}
 
-          {project.sheetGoods?.length > 0 && (
+          {sheetGoods.length > 0 && (
             <div className="board-list-summary">
               <h4>Sheet Stock List</h4>
               <table>
@@ -2072,7 +2080,7 @@ function ProjectSummary({ project }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {project.sheetGoods.map(sheet => (
+                  {sheetGoods.map(sheet => (
                     <tr key={sheet.id}>
                       <td>{sheet.name || `${sheet.product} ${sheet.thickness}"`}</td>
                       <td>{sheet.length}"×{sheet.width}"</td>
@@ -2611,37 +2619,42 @@ function PurchaseOrderModal({ isOpen, onClose, project, boards, userProfile }) {
             </div>
           </div>
 
-          <table className="po-table">
-            <thead>
-              <tr>
-                <th>Qty</th>
-                <th>Species</th>
-                <th>Dimensions</th>
-                <th>Board Feet</th>
-              </tr>
-            </thead>
-            <tbody>
-              {shoppingList.map((item, idx) => (
-                <tr key={idx}>
-                  <td className="po-qty">{item.count}</td>
-                  <td className="po-species">{item.species}</td>
-                  <td className="po-dims">{formatDimensions(item)}</td>
-                  <td className="po-bf">{item.totalBF.toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="po-total-row">
-                <td className="po-qty"><strong>{totalPieces}</strong></td>
-                <td colSpan="2"><strong>Total</strong></td>
-                <td className="po-bf"><strong>{totalBF.toFixed(2)} BF</strong></td>
-              </tr>
-            </tfoot>
-          </table>
+          {shoppingList.length > 0 && (
+            <>
+              {sheetList.length > 0 && <h3 className="po-section-title">Lumber</h3>}
+              <table className="po-table">
+                <thead>
+                  <tr>
+                    <th>Qty</th>
+                    <th>Species</th>
+                    <th>Dimensions</th>
+                    <th>Board Feet</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shoppingList.map((item, idx) => (
+                    <tr key={idx}>
+                      <td className="po-qty">{item.count}</td>
+                      <td className="po-species">{item.species}</td>
+                      <td className="po-dims">{formatDimensions(item)}</td>
+                      <td className="po-bf">{item.totalBF.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="po-total-row">
+                    <td className="po-qty"><strong>{totalPieces}</strong></td>
+                    <td colSpan="2"><strong>Total</strong></td>
+                    <td className="po-bf"><strong>{totalBF.toFixed(2)} BF</strong></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </>
+          )}
 
           {sheetList.length > 0 && (
             <>
-              <h3 className="po-section-title" style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: '#324168', fontSize: '1rem' }}>Sheet Goods</h3>
+              <h3 className="po-section-title">Sheet Goods</h3>
               <table className="po-table">
                 <thead>
                   <tr>

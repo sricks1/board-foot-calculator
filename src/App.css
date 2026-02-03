@@ -3135,6 +3135,13 @@ button:disabled {
   font-size: 0.9rem;
 }
 
+.po-section-title {
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  color: var(--slate-blue);
+  font-size: 1rem;
+}
+
 .po-footer {
   text-align: center;
   padding-top: 1rem;
