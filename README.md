@@ -25,6 +25,9 @@ A web application for woodworkers to calculate lumber requirements, plan cuts, a
 - **Grain Direction Constraints**: Any, With Grain, or Cross Grain placement
 - **Per-Sheet Pricing**: Cost calculation by sheet count instead of board feet
 - **Visual Cut Plans**: See exactly where each piece is placed on each sheet
+- **PDF Export**: Sheet stock, cut list, and cut plan diagrams included in PDF
+- **Purchase Orders**: Sheet goods listed alongside lumber in purchase orders
+- **Project Summary**: Sidebar shows both lumber and sheet goods stats
 
 ---
 
@@ -144,6 +147,22 @@ Click **"Export to PDF"** to generate a professional document containing:
 - Cut list table with all pieces
 - Visual cut diagrams for each board
 - Efficiency statistics
+- **Sheet goods** (if present): Sheet stock table, sheet cut list, and sheet cut plan diagrams with sq ft totals
+
+### Purchase Orders
+
+Generate a printable shopping list for your lumber yard or supplier:
+
+1. Open a project with stock boards or sheet goods
+2. Click the **"Purchase Order"** button
+3. Review the formatted purchase order
+4. Click **"Print / Save as PDF"** to print or save
+
+The purchase order includes:
+- **Lumber**: Grouped by species and thickness with board feet totals
+- **Sheet goods** (if present): Grouped by product and thickness with sq ft totals
+- Your contact information (configure in Settings)
+- Project name and date
 
 ---
 
@@ -211,9 +230,13 @@ Define pieces to cut from sheet goods:
 Generate optimized cutting layouts:
 
 1. Click **"Generate Cut Plan"**
-2. View efficiency statistics and waste percentage
+2. View statistics:
+   - **Efficiency**: Percentage of sheet area used vs. wasted
+   - **Waste**: Square feet of material lost
+   - **Sheets Used**: How many sheets needed out of available stock
 3. Visual diagrams show piece placement on each sheet
 4. Pieces with grain constraints show their orientation
+5. **Estimated Material Cost** table shows per-sheet pricing
 
 ---
 
