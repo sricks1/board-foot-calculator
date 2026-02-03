@@ -11,6 +11,7 @@ A web application for woodworkers to calculate lumber requirements, plan cuts, a
 ### Lumber Mode
 - **Project Management**: Create and manage multiple woodworking projects
 - **Cut List**: Define all pieces needed for your project with dimensions, thickness, species, and quantities
+- **CSV Import**: Bulk-import cut pieces from CSV files instead of entering each one manually
 - **Calculate Stock Needed**: Automatically determine how many boards to buy based on your cut list
 - **Cut Plan Optimizer**: Generate optimized cutting layouts using 2D bin packing
 - **Visual Diagrams**: SVG-based cut plan visualization showing piece placement on boards
@@ -22,6 +23,7 @@ A web application for woodworkers to calculate lumber requirements, plan cuts, a
 ### Sheet Goods Mode
 - **Standard Sheet Sizes**: 4×8 (standard), 5×5 (Baltic Birch), 4×4, or custom dimensions
 - **Product Types**: Baltic Birch, MDF, plywood (Birch, Maple, Oak, Walnut, Cherry), Melamine
+- **CSV Import**: Bulk-import sheet cut pieces from CSV files
 - **Grain Direction Constraints**: Any, With Grain, or Cross Grain placement
 - **Per-Sheet Pricing**: Cost calculation by sheet count instead of board feet
 - **Visual Cut Plans**: See exactly where each piece is placed on each sheet
@@ -64,6 +66,12 @@ Define all the pieces you need to cut for your project.
 | Thickness | Lumber notation: 4/4 (1"), 5/4 (1.25"), 6/4 (1.5"), 8/4 (2"), etc. |
 | Species | Wood type (Walnut, Cherry, Oak, etc.) |
 | Quantity | How many pieces needed |
+
+**Importing from CSV:**
+- Click **📥 Import CSV** to upload a CSV file with multiple pieces at once
+- Click **Download template** to get a sample CSV file with the correct format
+- CSV format: `Name, Length, Width, Thickness, Species, Quantity` (one piece per row, first row is header)
+- Invalid rows are skipped with error messages; valid rows are imported
 
 **Tips:**
 - Add all pieces before calculating stock
@@ -222,6 +230,12 @@ Define pieces to cut from sheet goods:
 - **Cross Grain**: Piece length aligns with sheet width (4' direction on standard sheets)
 
 *Note: Grain runs along the long side of standard sheets.*
+
+**Importing from CSV:**
+- Click **📥 Import CSV** to upload a CSV file with multiple pieces at once
+- Click **Download template** to get a sample CSV file with the correct format
+- CSV format: `Name, Length, Width, Thickness, Product, Quantity, Grain Direction` (first row is header)
+- Grain Direction column is optional (defaults to "any")
 
 ---
 

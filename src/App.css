@@ -449,6 +449,41 @@ button {
   font-size: 1.2rem;
 }
 
+/* CSV Import Section */
+.import-csv-section {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.75rem 0 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--workshop-cream, #F5F1E8);
+  border: 1px dashed var(--sky-blue, #AFCFE4);
+  border-radius: 8px;
+}
+
+.btn-import-csv {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-download-template {
+  background: none;
+  border: none;
+  color: var(--slate-blue, #324168);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  white-space: nowrap;
+}
+
+.btn-download-template:hover {
+  color: var(--craftsman-orange, #E06829);
+}
+
 .btn-back {
   background: transparent;
   color: var(--slate-blue);

@@ -6,6 +6,64 @@ import { supabase } from './supabaseClient'
 import Auth from './Auth'
 import { getAvailableSpecies, calculateTotalCost, getPricePerBF } from './lumberPrices'
 
+// CSV Import Parser
+function parseCutListCSV(csvText, mode = 'lumber') {
+  const lines = csvText.split(/\r?\n/).filter(line => line.trim())
+  if (lines.length < 2) return { pieces: [], errors: ['File is empty or has no data rows'] }
+
+  const pieces = []
+  const errors = []
+
+  // Skip header row (line 0)
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',').map(c => c.trim())
+    const rowNum = i + 1
+
+    if (cols.length < 4) {
+      errors.push(`Row ${rowNum}: Not enough columns (need at least Name, Length, Width, Thickness)`)
+      continue
+    }
+
+    const name = cols[0]
+    const length = parseFloat(cols[1])
+    const width = parseFloat(cols[2])
+    const thickness = cols[3]
+
+    if (!name) { errors.push(`Row ${rowNum}: Missing piece name`); continue }
+    if (isNaN(length) || length <= 0) { errors.push(`Row ${rowNum}: Invalid length "${cols[1]}"`); continue }
+    if (isNaN(width) || width <= 0) { errors.push(`Row ${rowNum}: Invalid width "${cols[2]}"`); continue }
+    if (!thickness) { errors.push(`Row ${rowNum}: Missing thickness`); continue }
+
+    if (mode === 'lumber') {
+      const species = cols[4] || ''
+      const quantity = parseInt(cols[5]) || 1
+      pieces.push({ id: Date.now() + i, name, length, width, thickness, species, quantity })
+    } else {
+      const product = cols[4] || ''
+      const quantity = parseInt(cols[5]) || 1
+      const grainDirection = (cols[6] || 'any').toLowerCase()
+      const validGrain = ['any', 'length', 'width']
+      pieces.push({
+        id: Date.now() + i,
+        name, length, width, thickness,
+        product,
+        quantity,
+        grainDirection: validGrain.includes(grainDirection) ? grainDirection : 'any',
+        materialType: 'sheet'
+      })
+    }
+  }
+
+  return { pieces, errors }
+}
+
+function generateCSVTemplate(mode = 'lumber') {
+  if (mode === 'lumber') {
+    return 'Name, Length, Width, Thickness, Species, Quantity\nTable Leg, 28.5, 3.5, 4/4, Walnut, 4\nApron, 24, 4, 4/4, Walnut, 2\nShelf, 36, 11.25, 4/4, Cherry, 3'
+  }
+  return 'Name, Length, Width, Thickness, Product, Quantity, Grain Direction\nShelf, 30, 11.25, 3/4, Baltic Birch, 3, any\nBack Panel, 36, 30, 3/4, Baltic Birch, 1, length\nDoor, 24, 18, 1/2, MDF, 2, any'
+}
+
 // Dropdown Menu Component
 function Dropdown({ label, icon, items, className = '' }) {
   const [isOpen, setIsOpen] = useState(false)
@@ -3574,6 +3632,130 @@ function App() {
     }
   }
 
+  // Import lumber cut list from CSV
+  const handleImportLumberCutList = async (file) => {
+    const text = await file.text()
+    const { pieces, errors } = parseCutListCSV(text, 'lumber')
+
+    if (pieces.length === 0) {
+      alert(errors.length > 0 ? `Import failed:\n${errors.join('\n')}` : 'No valid pieces found in file.')
+      return
+    }
+
+    setSyncStatus('syncing')
+    try {
+      const rows = pieces.map(p => ({
+        project_id: currentProject.id,
+        name: p.name,
+        length: p.length,
+        width: p.width,
+        thickness: p.thickness,
+        species: p.species,
+        quantity: p.quantity
+      }))
+
+      const { data, error } = await supabase
+        .from('cut_pieces')
+        .insert(rows)
+        .select()
+
+      if (error) throw error
+
+      const newPieces = data.map(d => ({
+        id: d.id,
+        name: d.name,
+        length: Number(d.length),
+        width: Number(d.width),
+        thickness: d.thickness,
+        species: d.species,
+        quantity: d.quantity
+      }))
+
+      const updatedProject = {
+        ...currentProject,
+        cutPieces: [...(currentProject.cutPieces || []), ...newPieces],
+        cutPlan: null
+      }
+      setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+      setCurrentProject(updatedProject)
+
+      await supabase.from('projects').update({ cut_plan: null }).eq('id', currentProject.id)
+
+      setSyncStatus('synced')
+
+      let msg = `Imported ${newPieces.length} piece${newPieces.length !== 1 ? 's' : ''} successfully.`
+      if (errors.length > 0) msg += `\n\nSkipped ${errors.length} row(s):\n${errors.join('\n')}`
+      alert(msg)
+    } catch (error) {
+      console.error('Error importing cut pieces:', error)
+      setSyncStatus('error')
+      alert('Error importing cut pieces: ' + error.message)
+    }
+  }
+
+  // Import sheet goods cut list from CSV
+  const handleImportSheetCutList = async (file) => {
+    const text = await file.text()
+    const { pieces, errors } = parseCutListCSV(text, 'sheet')
+
+    if (pieces.length === 0) {
+      alert(errors.length > 0 ? `Import failed:\n${errors.join('\n')}` : 'No valid pieces found in file.')
+      return
+    }
+
+    setSyncStatus('syncing')
+    try {
+      const rows = pieces.map(p => ({
+        project_id: currentProject.id,
+        name: p.name,
+        length: p.length,
+        width: p.width,
+        thickness: p.thickness,
+        product_type: p.product,
+        quantity: p.quantity,
+        grain_direction: p.grainDirection || 'any'
+      }))
+
+      const { data, error } = await supabase
+        .from('sheet_cut_pieces')
+        .insert(rows)
+        .select()
+
+      if (error) throw error
+
+      const newPieces = data.map(d => ({
+        id: d.id,
+        name: d.name,
+        length: Number(d.length),
+        width: Number(d.width),
+        thickness: d.thickness,
+        product: d.product_type,
+        quantity: d.quantity,
+        grainDirection: d.grain_direction
+      }))
+
+      const updatedProject = {
+        ...currentProject,
+        sheetCutPieces: [...(currentProject.sheetCutPieces || []), ...newPieces],
+        sheetCutPlan: null
+      }
+      setProjects(projects.map(p => p.id === currentProject.id ? updatedProject : p))
+      setCurrentProject(updatedProject)
+
+      await supabase.from('projects').update({ sheet_cut_plan: null }).eq('id', currentProject.id)
+
+      setSyncStatus('synced')
+
+      let msg = `Imported ${newPieces.length} piece${newPieces.length !== 1 ? 's' : ''} successfully.`
+      if (errors.length > 0) msg += `\n\nSkipped ${errors.length} row(s):\n${errors.join('\n')}`
+      alert(msg)
+    } catch (error) {
+      console.error('Error importing sheet cut pieces:', error)
+      setSyncStatus('error')
+      alert('Error importing sheet cut pieces: ' + error.message)
+    }
+  }
+
   const handleUpdateCutPiece = async (updatedPiece) => {
     setSyncStatus('syncing')
     try {
@@ -4723,6 +4905,41 @@ function App() {
                       />
                     )}
 
+                    <div className="import-csv-section">
+                      <input
+                        type="file"
+                        accept=".csv,.tsv,.txt"
+                        style={{ display: 'none' }}
+                        id="lumber-csv-import"
+                        onChange={(e) => {
+                          if (e.target.files[0]) {
+                            handleImportLumberCutList(e.target.files[0])
+                            e.target.value = ''
+                          }
+                        }}
+                      />
+                      <button
+                        className="btn-secondary btn-import-csv"
+                        onClick={() => document.getElementById('lumber-csv-import').click()}
+                      >
+                        📥 Import CSV
+                      </button>
+                      <button
+                        className="btn-link btn-download-template"
+                        onClick={() => {
+                          const blob = new Blob([generateCSVTemplate('lumber')], { type: 'text/csv' })
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url
+                          a.download = 'lumber_cut_list_template.csv'
+                          a.click()
+                          URL.revokeObjectURL(url)
+                        }}
+                      >
+                        Download template
+                      </button>
+                    </div>
+
                     {cutPieces.length > 0 ? (
                       <div className="cut-piece-list">
                         <h3>Cut Pieces</h3>
@@ -4933,6 +5150,41 @@ function App() {
                         availableThicknesses={[...new Set((currentProject.sheetGoods || []).map(s => s.thickness))]}
                       />
                     )}
+
+                    <div className="import-csv-section">
+                      <input
+                        type="file"
+                        accept=".csv,.tsv,.txt"
+                        style={{ display: 'none' }}
+                        id="sheet-csv-import"
+                        onChange={(e) => {
+                          if (e.target.files[0]) {
+                            handleImportSheetCutList(e.target.files[0])
+                            e.target.value = ''
+                          }
+                        }}
+                      />
+                      <button
+                        className="btn-secondary btn-import-csv"
+                        onClick={() => document.getElementById('sheet-csv-import').click()}
+                      >
+                        📥 Import CSV
+                      </button>
+                      <button
+                        className="btn-link btn-download-template"
+                        onClick={() => {
+                          const blob = new Blob([generateCSVTemplate('sheet')], { type: 'text/csv' })
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url
+                          a.download = 'sheet_cut_list_template.csv'
+                          a.click()
+                          URL.revokeObjectURL(url)
+                        }}
+                      >
+                        Download template
+                      </button>
+                    </div>
 
                     {(currentProject.sheetCutPieces?.length || 0) > 0 ? (
                       <div className="cut-piece-list sheet-cut-piece-list">
