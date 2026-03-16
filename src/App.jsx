@@ -6,6 +6,12 @@ import { supabase } from './supabaseClient'
 import Auth from './Auth'
 import { getAvailableSpecies, calculateTotalCost, getPricePerBF } from './lumberPrices'
 
+// Smart board feet formatting — whole numbers show no decimals, otherwise 1 decimal
+function formatBF(value) {
+  if (value === Math.round(value) && value >= 1) return `${Math.round(value)}`
+  return value.toFixed(1)
+}
+
 // CSV Import Parser
 function parseCutListCSV(csvText, mode = 'lumber') {
   const lines = csvText.split(/\r?\n/).filter(line => line.trim())
@@ -1021,13 +1027,13 @@ function BoardItem({ board, onEdit, onDelete, onDragStart, onDragOver, onDrop, o
         </p>
         {board.species && <p className="board-species">{board.species}</p>}
         <p className="board-feet">
-          <strong>{board.boardFeet.toFixed(2)}</strong> board feet
-          {qty > 1 && <span className="per-piece"> ({perPiece.toFixed(2)} each)</span>}
+          <strong>{formatBF(board.boardFeet)}</strong> BF
+          {qty > 1 && <span className="per-piece"> ({formatBF(perPiece)} each)</span>}
         </p>
       </div>
       <div className="board-actions">
-        <button onClick={() => onEdit(board)} className="btn-edit">Edit</button>
-        <button onClick={() => onDelete(board.id)} className="btn-delete">Delete</button>
+        <button onClick={() => onEdit(board)} className="btn-edit" aria-label={`Edit ${board.name}`}>Edit</button>
+        <button onClick={() => onDelete(board.id)} className="btn-delete" aria-label={`Delete ${board.name}`}>Delete</button>
       </div>
     </div>
   )
@@ -1246,7 +1252,7 @@ function getCutPieceSpecies(pieces) {
 }
 
 // Stock Calculator Component - calculates how many boards needed
-function StockCalculator({ cutPieces, onApplyStock, projectQuantity = 1 }) {
+function StockCalculator({ cutPieces, onApplyStock, projectQuantity = 1, kerfWidth = 0.125 }) {
   // Current selection state for adding a board type
   const [currentThickness, setCurrentThickness] = useState('4/4')
   const [currentSpecies, setCurrentSpecies] = useState('')
@@ -1373,7 +1379,7 @@ function StockCalculator({ cutPieces, onApplyStock, projectQuantity = 1 }) {
     }))
 
     setTimeout(() => {
-      const calcResult = calculateStockNeeded(cutPieces, templates)
+      const calcResult = calculateStockNeeded(cutPieces, templates, kerfWidth)
       setResult(calcResult)
       setCalculating(false)
     }, 100)
@@ -1476,7 +1482,7 @@ function StockCalculator({ cutPieces, onApplyStock, projectQuantity = 1 }) {
                     onClick={() => setCurrentSize(tmpl.id)}
                   >
                     <span className="size-name">{tmpl.name}</span>
-                    <span className="size-bf">{bf.toFixed(2)} BF</span>
+                    <span className="size-bf">{formatBF(bf)} BF</span>
                   </button>
                 )
               })}
@@ -1525,7 +1531,7 @@ function StockCalculator({ cutPieces, onApplyStock, projectQuantity = 1 }) {
               <div className="board-type-info">
                 <span className="board-type-name">{bt.name}</span>
                 <span className="board-type-details">
-                  {bt.thickness}{bt.species ? ` • ${bt.species}` : ''} • {bt.boardFeet.toFixed(2)} BF
+                  {bt.thickness}{bt.species ? ` • ${bt.species}` : ''} • {formatBF(bt.boardFeet)} BF
                 </span>
               </div>
               <button
@@ -1586,7 +1592,7 @@ function StockCalculator({ cutPieces, onApplyStock, projectQuantity = 1 }) {
               <span className="result-label">Total Boards</span>
             </div>
             <div className="result-stat">
-              <span className="result-value">{calculateTotalBF().toFixed(1)}</span>
+              <span className="result-value">{formatBF(calculateTotalBF())}</span>
               <span className="result-label">Total Board Feet</span>
             </div>
             <div className="result-stat">
@@ -1859,16 +1865,16 @@ function CutPlanDisplay({ cutPlan, boards, onRegenerate, isRegenerating, workflo
         </button>
       </div>
 
-      <div className="cut-plan-stats">
-        <div className={`cut-plan-stat ${cutPlan.efficiency >= 80 ? 'stat-good' : cutPlan.efficiency >= 60 ? 'stat-moderate' : 'stat-poor'}`}>
+      <div className="cut-plan-stats" role="group" aria-label="Cut plan statistics">
+        <div className={`cut-plan-stat ${cutPlan.efficiency >= 80 ? 'stat-good' : cutPlan.efficiency >= 60 ? 'stat-moderate' : 'stat-poor'}`} aria-label={`Efficiency: ${cutPlan.efficiency.toFixed(1)}%`}>
           <span className="stat-value">{cutPlan.efficiency.toFixed(1)}%</span>
           <span className="stat-label">Efficiency</span>
         </div>
-        <div className={`cut-plan-stat ${cutPlan.waste <= 1 ? 'stat-good' : cutPlan.waste <= 3 ? 'stat-moderate' : 'stat-poor'}`}>
-          <span className="stat-value">{cutPlan.waste.toFixed(2)}</span>
+        <div className={`cut-plan-stat ${cutPlan.waste <= 1 ? 'stat-good' : cutPlan.waste <= 3 ? 'stat-moderate' : 'stat-poor'}`} aria-label={`Waste: ${formatBF(cutPlan.waste)} ${isSheet ? 'square feet' : 'board feet'}`}>
+          <span className="stat-value">{formatBF(cutPlan.waste)}</span>
           <span className="stat-label">{isSheet ? 'Waste (sq ft)' : 'Waste (BF)'}</span>
         </div>
-        <div className="cut-plan-stat">
+        <div className="cut-plan-stat" aria-label={`${isSheet ? 'Sheets' : 'Boards'} used: ${cutPlan.boardsUsed} of ${cutPlan.totalStockBoards}`}>
           <span className="stat-value">{cutPlan.boardsUsed}/{cutPlan.totalStockBoards}</span>
           <span className="stat-label">{isSheet ? 'Sheets Used' : 'Boards Used'}</span>
         </div>
@@ -1928,7 +1934,7 @@ function CutPlanDisplay({ cutPlan, boards, onRegenerate, isRegenerating, workflo
                       {item.species && ` • ${item.species}`}
                     </span>
                   </td>
-                  <td className="bf-col">{isSheet ? ((item.length * item.width) / 144 * item.count).toFixed(1) : item.totalBF.toFixed(1)}</td>
+                  <td className="bf-col">{isSheet ? formatBF((item.length * item.width) / 144 * item.count) : formatBF(item.totalBF)}</td>
                   <td className="price-col">
                     <div className="price-input-wrapper">
                       <span className="price-symbol">$</span>
@@ -2014,7 +2020,7 @@ function ProjectSummary({ project }) {
           <span className="stat-label">Pieces</span>
         </div>
         <div className="stat">
-          <span className="stat-value">{totalBoardFeet.toFixed(1)}</span>
+          <span className="stat-value">{formatBF(totalBoardFeet)}</span>
           <span className="stat-label">Board Feet</span>
         </div>
       </div>
@@ -2032,7 +2038,7 @@ function ProjectSummary({ project }) {
               </span>
             </div>
             <div className="stat">
-              <span className="stat-value">{totalCutBF.toFixed(1)}</span>
+              <span className="stat-value">{formatBF(totalCutBF)}</span>
               <span className="stat-label">Board Feet</span>
             </div>
           </div>
@@ -2308,7 +2314,7 @@ function HelpModal({ isOpen, onClose }) {
             <ul>
               <li>Add all pieces before calculating stock</li>
               <li>Group similar pieces by species and thickness for efficient cutting</li>
-              <li>The optimizer accounts for 1/8" saw kerf between cuts</li>
+              <li>The optimizer accounts for saw kerf between cuts (configurable in Settings, default 1/8")</li>
             </ul>
           </section>
 
@@ -2407,21 +2413,18 @@ function HelpModal({ isOpen, onClose }) {
 
           <section className="help-section">
             <h3>Settings</h3>
-            <p>Click <strong>"Settings"</strong> in the header to configure your profile:</p>
+            <p>Click <strong>"Settings"</strong> in the header to configure:</p>
             <ul>
-              <li><strong>Name / Company</strong>: Your name or business name</li>
-              <li><strong>Address</strong>: Street address, city, state, zip</li>
-              <li><strong>Phone</strong>: Contact phone number</li>
-              <li><strong>Email</strong>: Contact email address</li>
+              <li><strong>Contact Info</strong>: Name, address, phone, email — appears on purchase orders and syncs across devices</li>
+              <li><strong>Saw Blade Kerf</strong>: Material lost per cut (1/16" to 3/16"). Default is 1/8" for standard table saw blades. Thin-kerf blades may use 3/32".</li>
             </ul>
-            <p>This information appears on your purchase orders and syncs with your account across all devices.</p>
           </section>
 
           <section className="help-section">
             <h3>Kerf and Rough Lumber</h3>
             <p>The optimizer accounts for realistic woodworking conditions:</p>
             <ul>
-              <li><strong>Saw kerf</strong>: 1/8" (0.125") material loss between each cut</li>
+              <li><strong>Saw kerf</strong>: Configurable in Settings (default 1/8" / 0.125"). This is the material lost per cut.</li>
               <li><strong>Rough lumber edges</strong>: Additional 1/8" on each edge for jointing/straightening</li>
               <li>A 6" wide piece requires at least 6.25" of rough stock width</li>
             </ul>
@@ -2469,7 +2472,7 @@ function HelpModal({ isOpen, onClose }) {
 }
 
 // Settings Modal Component
-function SettingsModal({ isOpen, onClose, userProfile, onSave }) {
+function SettingsModal({ isOpen, onClose, userProfile, onSave, kerfWidth, onKerfChange }) {
   const [profile, setProfile] = useState(userProfile)
 
   useEffect(() => {
@@ -2487,6 +2490,13 @@ function SettingsModal({ isOpen, onClose, userProfile, onSave }) {
   const handleChange = (field, value) => {
     setProfile(prev => ({ ...prev, [field]: value }))
   }
+
+  const KERF_OPTIONS = [
+    { value: 0.0625, label: '1/16"  (0.0625)' },
+    { value: 0.09375, label: '3/32"  (0.09375)' },
+    { value: 0.125, label: '1/8"  (0.125) — default' },
+    { value: 0.1875, label: '3/16"  (0.1875)' },
+  ]
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -2546,6 +2556,40 @@ function SettingsModal({ isOpen, onClose, userProfile, onSave }) {
                   placeholder="you@example.com"
                 />
               </div>
+            </div>
+
+            <div className="settings-section">
+              <h3>Optimizer</h3>
+              <p className="settings-description">
+                Configure how the cut optimizer works.
+              </p>
+
+              <div className="form-group">
+                <label htmlFor="kerf-width">Saw Blade Kerf</label>
+                <select
+                  id="kerf-width"
+                  value={kerfWidth}
+                  onChange={(e) => onKerfChange(parseFloat(e.target.value))}
+                  aria-label="Saw blade kerf width"
+                >
+                  {KERF_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <p className="settings-description" style={{ marginTop: '4px', fontSize: '0.8rem' }}>
+                  Material lost per cut. Most table saws use a 1/8" kerf blade.
+                </p>
+              </div>
+            </div>
+
+            <div className="settings-section">
+              <h3>About</h3>
+              <p className="settings-description">
+                CutSmart by <a href="https://thejoinery.club" target="_blank" rel="noopener noreferrer">The Joinery</a>
+              </p>
+              <p className="settings-description">
+                Questions or feedback? <a href="mailto:joinery@thejoinery.club">joinery@thejoinery.club</a>
+              </p>
             </div>
 
             <div className="settings-actions">
@@ -2695,7 +2739,7 @@ function PurchaseOrderModal({ isOpen, onClose, project, boards, userProfile }) {
                       <td className="po-qty">{item.count}</td>
                       <td className="po-species">{item.species}</td>
                       <td className="po-dims">{formatDimensions(item)}</td>
-                      <td className="po-bf">{item.totalBF.toFixed(2)}</td>
+                      <td className="po-bf">{formatBF(item.totalBF)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2703,7 +2747,7 @@ function PurchaseOrderModal({ isOpen, onClose, project, boards, userProfile }) {
                   <tr className="po-total-row">
                     <td className="po-qty"><strong>{totalPieces}</strong></td>
                     <td colSpan="2"><strong>Total</strong></td>
-                    <td className="po-bf"><strong>{totalBF.toFixed(2)} BF</strong></td>
+                    <td className="po-bf"><strong>{formatBF(totalBF)} BF</strong></td>
                   </tr>
                 </tfoot>
               </table>
@@ -2870,6 +2914,10 @@ function App() {
   const [draggingSheetPieceId, setDraggingSheetPieceId] = useState(null)
   const [dragOverSheetPieceId, setDragOverSheetPieceId] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [kerfWidth, setKerfWidth] = useState(() => {
+    const saved = localStorage.getItem('kerfWidth')
+    return saved ? parseFloat(saved) : 0.125
+  })
   const [userProfile, setUserProfile] = useState({
     name: '',
     address: '',
@@ -2945,6 +2993,11 @@ function App() {
       setUserProfile({ name: '', address: '', phone: '', email: '' })
     }
   }, [session])
+
+  // Persist kerf preference
+  useEffect(() => {
+    localStorage.setItem('kerfWidth', kerfWidth.toString())
+  }, [kerfWidth])
 
   // Switch to appropriate tab when material type changes
   useEffect(() => {
@@ -3205,7 +3258,7 @@ function App() {
         })
 
         // Recalculate stock needed with multiplied cut pieces
-        const result = calculateStockNeeded(multipliedCutPieces, boardTemplates)
+        const result = calculateStockNeeded(multipliedCutPieces, boardTemplates, kerfWidth)
 
         if (result && result.boards) {
           newBoards = result.boards.map((board, idx) => ({
@@ -4301,8 +4354,8 @@ function App() {
       ? cutPiecesForOptimizer.map(p => ({ ...p, quantity: (p.quantity || 1) * projectQty }))
       : cutPiecesForOptimizer
 
-    // Use existing optimizer (with kerf of 0.125 for sheet goods - typical blade width)
-    const cutPlan = optimizeCuts(boardsFromSheets, multipliedCutPieces, 0.125)
+    // Use existing optimizer with user's kerf preference
+    const cutPlan = optimizeCuts(boardsFromSheets, multipliedCutPieces, kerfWidth)
 
     const updatedProject = {
       ...currentProject,
@@ -4353,7 +4406,7 @@ function App() {
       ? cutPieces.map(p => ({ ...p, quantity: (p.quantity || 1) * projectQty }))
       : cutPieces
 
-    const cutPlan = optimizeCuts(currentProject.boards, multipliedCutPieces)
+    const cutPlan = optimizeCuts(currentProject.boards, multipliedCutPieces, kerfWidth)
 
     // Update local state
     const updatedProject = {
@@ -4523,6 +4576,8 @@ function App() {
         onClose={() => setShowSettings(false)}
         userProfile={userProfile}
         onSave={handleUpdateProfile}
+        kerfWidth={kerfWidth}
+        onKerfChange={setKerfWidth}
       />
       <PurchaseOrderModal
         isOpen={showPurchaseOrder}
@@ -4574,7 +4629,7 @@ function App() {
                           {project.description && <p>{project.description}</p>}
                           <span className="project-meta">
                             {project.boards.length} boards •
-                            {project.boards.reduce((sum, b) => sum + b.boardFeet, 0).toFixed(2)} BF
+                            {formatBF(project.boards.reduce((sum, b) => sum + b.boardFeet, 0))} BF
                             {(project.cutPieces?.length || 0) > 0 && (
                               <> • {project.cutPieces.length} cut pieces</>
                             )}
@@ -4778,6 +4833,7 @@ function App() {
                         cutPieces={getMultipliedCutPieces()}
                         onApplyStock={handleApplyCalculatedStock}
                         projectQuantity={projectQuantity}
+                        kerfWidth={kerfWidth}
                       />
                     ) : workflowType === 'calculate' && currentProject.boards.length === 0 && cutPieces.length === 0 ? (
                       <div className="workflow-prompt">
